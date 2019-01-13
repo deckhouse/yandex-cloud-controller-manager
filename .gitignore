@@ -4,9 +4,15 @@
 *.dll
 *.so
 *.dylib
+/yandex-cloud-controller-manager
 
 # Test binary, build with `go test -c`
 *.test
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# JetBrains IDEs: IntelliJ, GoLand and etc
+*.iws
+.idea_modules/
+.idea/
