@@ -1,30 +1,33 @@
-IMG ?= dlisin/yandex-cloud-controller-manager:latest
+DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:latest
 
-all: build
+all: test
+
+docker-push: docker-build
+	docker push ${DOCKER_IMG}
+
+docker-build: test
+	docker build -t ${DOCKER_IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
+
+test: build
+	go test $(shell go list ./... | grep -v vendor)
+
+build: gofmt goimports golint govet
+	go build ./cmd/yandex-cloud-controller-manager
+
+gofmt:
+	gofmt -s -w $(shell go list -f {{.Dir}} ./... | grep -v vendor)
+
+govet:
+	go vet $(shell go list ./... | grep -v vendor)
+
+golint: $(GOPATH)/bin/golint
+	golint $(shell go list ./... | grep -v vendor)
+
+goimports: $(GOPATH)/bin/goimports
+	goimports -w $(shell go list -f {{.Dir}} ./... | grep -v vendor)
 
 $(GOPATH)/bin/goimports:
 	go get golang.org/x/tools/cmd/goimports
 
-$(GOPATH)/bin/dep:
-	go get -u github.com/golang/dep/cmd/dep
-
-build: fmt
-	go build ./cmd/yandex-cloud-controller-manager
-
-dep: $(GOPATH)/bin/dep
-	dep ensure -v
-
-fmt: vet imports
-	gofmt -s -w cmd pkg
-
-vet:
-	go vet ./...
-
-imports: $(GOPATH)/bin/goimports
-	goimports -w cmd pkg
-
-docker-build: build
-	docker build -t ${IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
-
-docker-push: docker-build
-	docker push ${IMG}
+$(GOPATH)/bin/golint:
+	go get -u golang.org/x/lint/golint

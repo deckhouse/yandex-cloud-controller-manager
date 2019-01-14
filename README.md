@@ -1,6 +1,7 @@
 # Kubernetes Cloud Controller Manager for Yandex.Cloud
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/dlisin/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/dlisin/yandex-cloud-controller-manager)
+[![Build Status](https://travis-ci.org/dlisin/yandex-cloud-controller-manager.svg?branch=master)](https://travis-ci.org/dlisin/yandex-cloud-controller-manager)
 
 ## Work In Progress
 This project is currently under development. Use at your own risk. Contributions welcome!

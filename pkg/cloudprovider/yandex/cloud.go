@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	// ProviderName is the value used for the --cloud-provider flag
 	ProviderName = "yandex"
 )
 
