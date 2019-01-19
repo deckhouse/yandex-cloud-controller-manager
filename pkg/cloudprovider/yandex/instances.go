@@ -2,74 +2,125 @@ package yandex
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
-	"k8s.io/api/core/v1"
+	"github.com/pkg/errors"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 )
 
-type instances struct {
-}
-
-func newInstances() cloudprovider.Instances {
-	return &instances{
-		// ToDo ...
+// NodeAddresses returns the addresses of the node specified by node name.
+func (yc *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]v1.NodeAddress, error) {
+	instance, err := yc.getInstanceByNodeName(ctx, nodeName)
+	if err != nil {
+		return []v1.NodeAddress{}, err
 	}
+
+	return extractNodeAddresses(instance)
 }
 
-// NodeAddresses returns the addresses of the specified instance.
-// TODO(roberthbailey): This currently is only used in such a way that it
-// returns the address of the calling instance. We should do a rename to
-// make this clearer.
-func (i *instances) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.NodeAddress, error) {
-	return nil, errors.New("not implemented") // ToDo ...
+// NodeAddressesByProviderID returns the addresses of the node specified by providerID
+func (yc *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string) ([]v1.NodeAddress, error) {
+	instance, err := yc.getInstanceByProviderID(ctx, providerID)
+	if err != nil {
+		return []v1.NodeAddress{}, err
+	}
+
+	return extractNodeAddresses(instance)
 }
 
-// NodeAddressesByProviderID returns the addresses of the specified instance.
-// The instance is specified using the providerID of the node. The
-// ProviderID is a unique identifier of the node. This will not be called
-// from the node whose nodeaddresses are being queried. i.e. local metadata
-// services cannot be used in this method to obtain nodeaddresses
-func (i *instances) NodeAddressesByProviderID(ctx context.Context, providerID string) ([]v1.NodeAddress, error) {
-	return nil, errors.New("not implemented") // ToDo ...
+// InstanceID returns the cloud provider ID of the node with the specified nodeName.
+func (yc *Cloud) InstanceID(ctx context.Context, nodeName types.NodeName) (string, error) {
+	instance, err := yc.getInstanceByNodeName(ctx, nodeName)
+	if err != nil {
+		return "", err
+	}
+
+	// instanceID is returned in the following form "${zone}/${instanceID}"
+	return instance.ZoneId + "/" + instance.Id, nil
 }
 
-// InstanceID returns the cloud provider ID of the node with the specified NodeName.
-// Note that if the instance does not exist or is no longer running, we must return ("", cloudprovider.InstanceNotFound)
-func (i *instances) InstanceID(ctx context.Context, nodeName types.NodeName) (string, error) {
-	return "", errors.New("not implemented") // ToDo ...
+// InstanceType returns the type of the node with the specified nodeName.
+// Currently "" is always returned, since Yandex.Cloud API does not provide any information about instance type.
+func (yc *Cloud) InstanceType(ctx context.Context, nodeName types.NodeName) (string, error) {
+	return "", nil
 }
 
-// InstanceType returns the type of the specified instance.
-func (i *instances) InstanceType(ctx context.Context, nodeName types.NodeName) (string, error) {
-	return "", errors.New("not implemented") // ToDo ...
+// InstanceTypeByProviderID returns the type of the node with the specified unique providerD.
+// Currently "" is always returned, since Yandex.Cloud API does not provide any information about instance type.
+func (yc *Cloud) InstanceTypeByProviderID(ctx context.Context, providerID string) (string, error) {
+	return "", nil
 }
 
-// InstanceTypeByProviderID returns the type of the specified instance.
-func (i *instances) InstanceTypeByProviderID(ctx context.Context, providerID string) (string, error) {
-	return "", errors.New("not implemented") // ToDo ...
-}
-
-// AddSSHKeyToAllInstances adds an SSH public key as a legal identity for all instances
-// expected format for the key is standard ssh-keygen format: <protocol> <blob>
-func (i *instances) AddSSHKeyToAllInstances(ctx context.Context, user string, keyData []byte) error {
-	return errors.New("not implemented") // ToDo ...
+// AddSSHKeyToAllInstances adds an SSH public key as a legal identity for all instances.
+func (yc *Cloud) AddSSHKeyToAllInstances(ctx context.Context, user string, keyData []byte) error {
+	return cloudprovider.NotImplemented
 }
 
 // CurrentNodeName returns the name of the node we are currently running on
-// On most clouds (e.g. GCE) this is the hostname, so we provide the hostname
-func (i *instances) CurrentNodeName(ctx context.Context, hostname string) (types.NodeName, error) {
-	return "", errors.New("not implemented") // ToDo ...
+func (yc *Cloud) CurrentNodeName(ctx context.Context, hostName string) (types.NodeName, error) {
+	return types.NodeName(hostName), nil
 }
 
-// InstanceExistsByProviderID returns true if the instance for the given provider id still is running.
+// InstanceExistsByProviderID returns true if the instance with the given providerID still exists.
 // If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
-func (i *instances) InstanceExistsByProviderID(ctx context.Context, providerID string) (bool, error) {
-	return false, errors.New("not implemented") // ToDo ...
+func (yc *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID string) (bool, error) {
+	_, err := yc.getInstanceByProviderID(ctx, providerID)
+	if err != nil {
+		if err == cloudprovider.InstanceNotFound {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return true, nil
 }
 
-// InstanceShutdownByProviderID returns true if the instance is shutdown in cloudprovider
-func (i *instances) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
-	return false, errors.New("not implemented") // ToDo ...
+// InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
+func (yc *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	return false, cloudprovider.NotImplemented
+}
+
+// getInstanceByProviderID returns Instance with the specified unique providerID
+// If the instance is not found - then returning cloudprovider.InstanceNotFound
+func (yc *Cloud) getInstanceByProviderID(ctx context.Context, providerID string) (*compute.Instance, error) {
+	_, instanceName, err := parseProviderID(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	return yc.getInstanceByName(ctx, instanceName)
+}
+
+// getInstanceByName returns Instance with the specified nodeName.
+// If the instance is not found - then returning cloudprovider.InstanceNotFound
+func (yc *Cloud) getInstanceByNodeName(ctx context.Context, nodeName types.NodeName) (*compute.Instance, error) {
+	instanceName := mapNodeNameToInstanceName(nodeName)
+
+	return yc.getInstanceByName(ctx, instanceName)
+}
+
+// getInstanceByName returns Instance with the specified instanceName.
+// If the instance is not found - then returning cloudprovider.InstanceNotFound
+func (yc *Cloud) getInstanceByName(ctx context.Context, instanceName string) (*compute.Instance, error) {
+	result, err := yc.sdk.Compute().Instance().List(ctx, &compute.ListInstancesRequest{
+		FolderId: yc.config.FolderID,
+		Filter:   fmt.Sprintf(`%s = "%s"`, "name", instanceName),
+		PageSize: apiDefaultPageSize,
+	})
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "cannot list ")
+	}
+
+	if result.Instances != nil || len(result.Instances) > 0 {
+		// If more then one instance is found - returning first one
+		return result.Instances[0], nil
+	}
+
+	return nil, cloudprovider.InstanceNotFound
 }

@@ -9,7 +9,7 @@ docker-build: test
 	docker build -t ${DOCKER_IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
 
 test: build
-	go test $(shell go list ./... | grep -v vendor)
+	go test -v $(shell go list ./... | grep -v vendor)
 
 build: gofmt goimports golint govet
 	go build ./cmd/yandex-cloud-controller-manager
@@ -26,8 +26,14 @@ golint: $(GOPATH)/bin/golint
 goimports: $(GOPATH)/bin/goimports
 	goimports -w $(shell go list -f {{.Dir}} ./... | grep -v vendor)
 
+dep: $(GOPATH)/bin/dep
+	dep ensure -v
+
 $(GOPATH)/bin/goimports:
-	go get golang.org/x/tools/cmd/goimports
+	go get -u golang.org/x/tools/cmd/goimports
 
 $(GOPATH)/bin/golint:
 	go get -u golang.org/x/lint/golint
+
+$(GOPATH)/bin/dep:
+	go get -u github.com/golang/dep/cmd/dep
