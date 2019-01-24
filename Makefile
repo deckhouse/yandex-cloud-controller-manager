@@ -1,4 +1,4 @@
-DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:latest
+DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:dev
 
 all: test
 
