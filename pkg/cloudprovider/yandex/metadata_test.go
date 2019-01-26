@@ -10,87 +10,58 @@ import (
 	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
+var (
+	mHandler        *httpmock.MockHandler
+	mServer         *httpmock.Server
+	metadataService *MetadataService
+)
+
+func beforeMetadataServiceTest(_ *testing.T) {
+	mHandler = &httpmock.MockHandler{}
+	mServer = httpmock.NewServer(mHandler)
+	metadataService = NewMetadataServiceWithURL(mServer.URL())
+}
+
+func afterMetadataServiceTest(t *testing.T) {
+	mHandler.AssertExpectations(t)
+	mServer.Close()
+}
+
 func Test_MetadataService_GetFolderID(t *testing.T) {
-	mockHandler := &httpmock.MockHandler{}
-	mockServer := httpmock.NewServer(mockHandler)
-	defer mockServer.Close()
+	beforeMetadataServiceTest(t)
+	defer afterMetadataServiceTest(t)
 
-	instanceMetadata := NewMetadataServiceWithURL(mockServer.URL())
+	mHandler.On("Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything).Return(httpmock.Response{
+		Body: []byte("projects/b1g4c2a3g6vkffp3qacq/zones/ru-central1-a"),
+	})
 
-	for _, test := range []struct {
-		input    string
-		folderID string
-		fail     bool
-	}{
-		{"projects/b1g4c2a3g6vkffp3qacq/zones/ru-central1-a", "b1g4c2a3g6vkffp3qacq", false},
-	} {
-		mockHandler.On("Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything).Return(httpmock.Response{
-			Body: []byte(test.input),
-		})
-
-		folderID, err := instanceMetadata.GetFolderID()
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
-
-		if test.fail {
-			assert.NotNil(t, err)
-		} else {
-			assert.Nil(t, err)
-			assert.Equal(t, test.folderID, folderID)
-		}
-	}
+	folderID, err := metadataService.GetFolderID()
+	assert.Nil(t, err)
+	assert.Equal(t, "b1g4c2a3g6vkffp3qacq", folderID)
 }
 
 func Test_MetadataService_GetZone(t *testing.T) {
-	mockHandler := &httpmock.MockHandler{}
-	mockServer := httpmock.NewServer(mockHandler)
-	defer mockServer.Close()
+	beforeMetadataServiceTest(t)
+	defer afterMetadataServiceTest(t)
 
-	instanceMetadata := NewMetadataServiceWithURL(mockServer.URL())
+	mHandler.On("Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything).Return(httpmock.Response{
+		Body: []byte("projects/b1g4c2a3g6vkffp3qacq/zones/ru-central1-a"),
+	})
 
-	for _, test := range []struct {
-		input string
-		zone  string
-		fail  bool
-	}{
-		{"projects/b1g4c2a3g6vkffp3qacq/zones/ru-central1-a", "ru-central1-a", false},
-	} {
-		mockHandler.On("Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything).Return(httpmock.Response{
-			Body: []byte(test.input),
-		})
-
-		zone, err := instanceMetadata.GetZone()
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
-
-		if test.fail {
-			assert.NotNil(t, err)
-		} else {
-			assert.Nil(t, err)
-			assert.Equal(t, test.zone, zone)
-		}
-	}
+	zone, err := metadataService.GetZone()
+	assert.Nil(t, err)
+	assert.Equal(t, "ru-central1-a", zone)
 }
 
 func Test_MetadataService_Get(t *testing.T) {
-	mockHandler := &httpmock.MockHandler{}
-	mockServer := httpmock.NewServer(mockHandler)
-	defer mockServer.Close()
+	beforeMetadataServiceTest(t)
+	defer afterMetadataServiceTest(t)
 
-	instanceMetadata := NewMetadataServiceWithURL(mockServer.URL())
+	mHandler.On("Handle", "GET", "/computeMetadata/v1/instance/name", mock.Anything).Return(httpmock.Response{
+		Body: []byte("e2e-test-node0"),
+	})
 
-	for _, test := range []struct {
-		key   string
-		value string
-	}{
-		{"instance/id", "fhmjne4n270jqgucjn5i"},
-	} {
-		mockHandler.On("Handle", "GET", "/computeMetadata/v1/"+test.key, mock.Anything).Return(httpmock.Response{
-			Body: []byte(test.value),
-		})
-
-		value, err := instanceMetadata.Get(test.key)
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/"+test.key, mock.Anything)
-
-		assert.Nil(t, err)
-		assert.Equal(t, test.value, value)
-	}
+	value, err := metadataService.Get("instance/name")
+	assert.Nil(t, err)
+	assert.Equal(t, "e2e-test-node0", value)
 }
