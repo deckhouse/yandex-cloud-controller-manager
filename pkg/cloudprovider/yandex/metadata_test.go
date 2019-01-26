@@ -1,4 +1,4 @@
-package yandex
+package yandex_test
 
 import (
 	"testing"
@@ -6,6 +6,8 @@ import (
 	"github.com/dankinder/httpmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 func Test_MetadataService_GetFolderID(t *testing.T) {
@@ -27,14 +29,14 @@ func Test_MetadataService_GetFolderID(t *testing.T) {
 		})
 
 		folderID, err := instanceMetadata.GetFolderID()
+		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
+
 		if test.fail {
 			assert.NotNil(t, err)
 		} else {
 			assert.Nil(t, err)
 			assert.Equal(t, test.folderID, folderID)
 		}
-
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
 	}
 }
 
@@ -57,14 +59,14 @@ func Test_MetadataService_GetZone(t *testing.T) {
 		})
 
 		zone, err := instanceMetadata.GetZone()
+		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
+
 		if test.fail {
 			assert.NotNil(t, err)
 		} else {
 			assert.Nil(t, err)
 			assert.Equal(t, test.zone, zone)
 		}
-
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/instance/zone", mock.Anything)
 	}
 }
 
@@ -86,9 +88,9 @@ func Test_MetadataService_Get(t *testing.T) {
 		})
 
 		value, err := instanceMetadata.Get(test.key)
+		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/"+test.key, mock.Anything)
+
 		assert.Nil(t, err)
 		assert.Equal(t, test.value, value)
-
-		mockHandler.AssertCalled(t, "Handle", "GET", "/computeMetadata/v1/"+test.key, mock.Anything)
 	}
 }

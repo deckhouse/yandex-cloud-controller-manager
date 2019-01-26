@@ -1,7 +1,6 @@
 package yandex
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -18,8 +17,6 @@ const (
 
 	envAccessToken = "YANDEX_CLOUD_ACCESS_TOKEN"
 	envFolderID    = "YANDEX_CLOUD_FOLDER_ID"
-
-	apiDefaultPageSize = 100
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
@@ -31,8 +28,8 @@ type CloudConfig struct {
 
 // Cloud is an implementation of cloudprovider.Interface for Yandex.Cloud
 type Cloud struct {
+	api    CloudAPI
 	config *CloudConfig
-	sdk    *ycsdk.SDK
 }
 
 func init() {
@@ -44,11 +41,16 @@ func init() {
 				return nil, err
 			}
 
-			return NewCloud(config)
+			api, err := NewCloudAPI(config)
+			if err != nil {
+				return nil, err
+			}
+
+			return NewCloud(config, api), nil
 		})
 }
 
-// NewCloudConfig creates a configuration for yandex.Cloud
+// NewCloudConfig creates a new instance of CloudConfig object
 func NewCloudConfig() (*CloudConfig, error) {
 	cloudConfig := &CloudConfig{}
 	metadata := NewMetadataService()
@@ -83,19 +85,12 @@ func NewCloudConfig() (*CloudConfig, error) {
 	return cloudConfig, nil
 }
 
-// NewCloud creates a new instance of yandex.Cloud
-func NewCloud(config *CloudConfig) (cloudprovider.Interface, error) {
-	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: config.OAuthToken,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Yandex.Cloud SDK: %s", err)
-	}
-
+// NewCloud creates a new instance of Cloud object
+func NewCloud(config *CloudConfig, api CloudAPI) *Cloud {
 	return &Cloud{
+		api:    api,
 		config: config,
-		sdk:    sdk,
-	}, nil
+	}
 }
 
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider

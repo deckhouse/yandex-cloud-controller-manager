@@ -16,7 +16,7 @@ func (yc *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
 
 // GetZoneByProviderID returns the Zone containing the current zone and locality region of the node specified by providerID
 func (yc *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cloudprovider.Zone, error) {
-	zone, _, err := parseProviderID(providerID)
+	_, zone, _, err := ParseProviderID(providerID)
 	if err != nil {
 		return cloudprovider.Zone{}, err
 	}
