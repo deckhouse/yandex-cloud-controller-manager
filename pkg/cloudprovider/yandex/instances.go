@@ -80,7 +80,12 @@ func (yc *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID stri
 
 // InstanceShutdownByProviderID returns true if the instance is in safe state to detach volumes
 func (yc *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
-	return false, cloudprovider.NotImplemented
+	instance, err := yc.getInstanceByProviderID(ctx, providerID)
+	if err != nil {
+		return false, err
+	}
+
+	return instance.Status == compute.Instance_STOPPED, nil
 }
 
 // nodeAddresses maps the instance information to an array of NodeAddresses
