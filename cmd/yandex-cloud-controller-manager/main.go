@@ -22,12 +22,10 @@ func main() {
 
 	command := app.NewCloudControllerManagerCommand()
 
-	// TODO: once we switch everything over to Cobra commands, we can go back to calling
-	// utilflag.InitFlags() (by removing its pflag.Parse() call). For now, we have to set the
-	// normalize func and add the go flag set by hand.
 	pflag.CommandLine.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	// utilflag.InitFlags()
+	goflag.CommandLine.Parse([]string{})
+
 	logs.InitLogs()
 	defer logs.FlushLogs()
 

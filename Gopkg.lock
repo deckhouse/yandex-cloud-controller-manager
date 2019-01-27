@@ -720,7 +720,7 @@
   version = "v2.2.2"
 
 [[projects]]
-  digest = "1:13f16734c26d843bc2accbc21dd49be71de99ad5fa0176726cdada80cc6859cb"
+  digest = "1:30849a7cbb351b920e160f236e5e0b965068c4b1aca53266a4bb7e8b7892a0b3"
   name = "k8s.io/api"
   packages = [
     "admission/v1beta1",
@@ -755,19 +755,19 @@
     "storage/v1beta1",
   ]
   pruneopts = "UT"
-  revision = "16e3e9a3868f6d08c046fdecf276244f87b568ba"
-  version = "kubernetes-1.11.6"
+  revision = "e86510ea3fe79b17eda7b8b3bb5cf8811d3af968"
+  version = "kubernetes-1.11.7"
 
 [[projects]]
   digest = "1:fa432f3acd7631bca4888e8d0f1db60cc46aef6a2d85a7f87f0ade54ea0ba56e"
   name = "k8s.io/apiextensions-apiserver"
   packages = ["pkg/features"]
   pruneopts = "UT"
-  revision = "6a481390bade242aa314fbc361f13ef526dbbc60"
-  version = "kubernetes-1.11.6"
+  revision = "1b43c14f72dc0262b9863ef2acb5eaa06c68c91c"
+  version = "kubernetes-1.11.7"
 
 [[projects]]
-  digest = "1:5a5f482fa0a759941016c8d65722e51b4a07f454bb09d06beb2ea79d167340e1"
+  digest = "1:c54d22a4da811a1a228d8dd2746150ac604baccd176fbfd6c7a395d1292db77e"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/equality",
@@ -820,11 +820,11 @@
     "third_party/forked/golang/reflect",
   ]
   pruneopts = "UT"
-  revision = "3d8ee2261517413977a62256b7d79644d7ffdc43"
-  version = "kubernetes-1.11.6"
+  revision = "1525e4dadd2df06debdeb27ee24ac7db5b6413b1"
+  version = "kubernetes-1.11.7"
 
 [[projects]]
-  digest = "1:eb683862606614d6671841680374f4811765f9ff01e54fb2ad60aa76483c661e"
+  digest = "1:832ab120f6a672ec91bb98c77f16cc70c4873b55081a9b9ebb29ea23d95e113a"
   name = "k8s.io/apiserver"
   packages = [
     "pkg/admission",
@@ -918,8 +918,8 @@
     "plugin/pkg/authorizer/webhook",
   ]
   pruneopts = "UT"
-  revision = "1d0a97d82005bd6d1f87162af5e539f00c308f0a"
-  version = "kubernetes-1.11.6"
+  revision = "1a0991cc437edda6d2341a327018d9b62d7e5a10"
+  version = "kubernetes-1.11.7"
 
 [[projects]]
   digest = "1:fcb41332648b95adad329ab1887278d7ab8b408a909cd376764559c74f6c7029"
@@ -1053,8 +1053,8 @@
     "util/workqueue",
   ]
   pruneopts = "UT"
-  revision = "8a775d0346c87c5242e5ff7911e6380a5b053bed"
-  version = "kubernetes-1.11.6"
+  revision = "08ba23b07bfdaa23cb261e951633f42bb94346b0"
+  version = "kubernetes-1.11.7"
 
 [[projects]]
   branch = "master"
@@ -1071,7 +1071,7 @@
   revision = "0317810137be915b9cf888946c6e115c1bfac693"
 
 [[projects]]
-  digest = "1:45bcd3192c56bb6349d8d03f34692c48d5decc065aac9eb28b67e19c37266f9f"
+  digest = "1:fb3899547fbf0d705f384cd4abe058146e78d95e14bd7bae72206cdfbd464a79"
   name = "k8s.io/kubernetes"
   packages = [
     "cmd/cloud-controller-manager/app",
@@ -1134,8 +1134,8 @@
     "pkg/version/verflag",
   ]
   pruneopts = "UT"
-  revision = "b1d75deca493a24a2f87eb1efde1a569e52fc8d9"
-  version = "v1.11.6"
+  revision = "65ecaf0671341311ce6aea0edab46ee69f65d59e"
+  version = "v1.11.7"
 
 [solve-meta]
   analyzer-name = "dep"
