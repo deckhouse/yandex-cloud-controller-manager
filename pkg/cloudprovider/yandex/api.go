@@ -38,7 +38,7 @@ type CloudAPIImpl struct {
 	sdk *ycsdk.SDK
 }
 
-// FindInstanceByFolderAndName returns Instance with the specified instanceName.
+// FindInstanceByFolderAndName searches for Instance with the specified folderID and instanceName.
 func (api *CloudAPIImpl) FindInstanceByFolderAndName(ctx context.Context, folderID string, instanceName string) (*compute.Instance, error) {
 	result, err := api.sdk.Compute().Instance().List(ctx, &compute.ListInstancesRequest{
 		FolderId: folderID,

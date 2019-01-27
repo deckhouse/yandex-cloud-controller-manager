@@ -2,9 +2,9 @@ package yandex
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/cloudprovider"
@@ -85,18 +85,18 @@ func (yc *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID st
 
 // nodeAddresses maps the instance information to an array of NodeAddresses
 func (yc *Cloud) nodeAddresses(instance *compute.Instance) ([]v1.NodeAddress, error) {
-	nodeAddresses := []v1.NodeAddress{{Type: v1.NodeInternalDNS, Address: instance.Fqdn}}
+	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) < 1 {
+		return []v1.NodeAddress{}, fmt.Errorf("could not find network interfaces for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
+	}
 
-	if instance.NetworkInterfaces != nil {
-		for _, networkInterface := range instance.NetworkInterfaces {
-			if networkInterface.PrimaryV4Address != nil {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address})
-			}
+	networkInterface := instance.NetworkInterfaces[0]
+	if networkInterface.PrimaryV4Address == nil {
+		return []v1.NodeAddress{}, fmt.Errorf("could not find primary IPv4 address for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
+	}
 
-			if networkInterface.PrimaryV4Address.OneToOneNat != nil {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: networkInterface.PrimaryV4Address.OneToOneNat.Address})
-			}
-		}
+	nodeAddresses := []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address}}
+	if networkInterface.PrimaryV4Address.OneToOneNat != nil {
+		nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: networkInterface.PrimaryV4Address.OneToOneNat.Address})
 	}
 
 	return nodeAddresses, nil

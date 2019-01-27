@@ -7,7 +7,6 @@ import (
 
 	"github.com/pkg/errors"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/controller"
 )
