@@ -10,7 +10,7 @@ docker-build: test
 	docker build -t ${DOCKER_IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
 
 test: build
-	go test -v -cover $(shell go list ./... | grep -v vendor)
+	go test -v -cover -coverprofile=coverage.out -covermode=atomic $(shell go list ./... | grep -v vendor)
 
 build: gofmt goimports golint govet
 	go build ./cmd/yandex-cloud-controller-manager
