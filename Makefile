@@ -1,4 +1,9 @@
-DOCKER_TAG ?=dev
+BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+BUILD_VERSION ?= $(shell cat VERSION)
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || true)
+GIT_TREE_STATE ?= $(shell if git_status=$$(git status --porcelain 2>/dev/null) && test -z "$$git_status"; then echo clean; else echo dirty; fi)
+
+DOCKER_TAG ?= dev
 DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:${DOCKER_TAG}
 
 all: test
@@ -7,8 +12,12 @@ docker-push: docker-build
 	docker push ${DOCKER_IMG}
 .PHONY: docker-push
 
-docker-build: test
-	docker build -t ${DOCKER_IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
+docker-build:
+	docker build --build-arg BUILD_DATE=${BUILD_DATE} \
+				 --build-arg BUILD_VERSION=${BUILD_VERSION} \
+				 --build-arg GIT_COMMIT=${GIT_COMMIT} \
+				 --build-arg GIT_TREE_STATE=${GIT_TREE_STATE} \
+				 -t ${DOCKER_IMG} -f ./cmd/yandex-cloud-controller-manager/Dockerfile .
 .PHONY: docker-build
 
 test: build
