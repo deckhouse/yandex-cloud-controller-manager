@@ -3,6 +3,7 @@ package yandex
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -10,6 +11,18 @@ import (
 var (
 	regExpProviderID = regexp.MustCompile(`^` + providerName + `://([^/]+)/([^/]+)/([^/]+)$`)
 )
+
+// GetRegion returns region of the provided zone.
+func GetRegion(zoneName string) (string, error) {
+	// zoneName is in the following form: ${regionName}-${ix}.
+	// So for input "ru-central1-a" output will be "ru-central1".
+	ix := strings.LastIndex(zoneName, "-")
+	if ix == -1 {
+		return "", fmt.Errorf("unexpected input: %s", zoneName)
+	}
+
+	return zoneName[:ix], nil
+}
 
 // MapNodeNameToInstanceName maps a k8s Node Name to a Yandex.Cloud Instance Name
 // Currently - this is a simple string cast.

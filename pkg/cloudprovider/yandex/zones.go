@@ -9,9 +9,7 @@ import (
 
 // GetZone returns the Zone containing the current zone and locality region for the node we are currently running on.
 func (yc *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
-	return cloudprovider.Zone{
-		FailureDomain: yc.config.LocalZone,
-	}, nil
+	return yc.getZone(yc.config.LocalZone)
 }
 
 // GetZoneByProviderID returns the Zone containing the current zone and locality region of the node specified by providerID
@@ -21,9 +19,7 @@ func (yc *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cl
 		return cloudprovider.Zone{}, err
 	}
 
-	return cloudprovider.Zone{
-		FailureDomain: zone,
-	}, nil
+	return yc.getZone(zone)
 }
 
 // GetZoneByNodeName returns the Zone containing the current zone and locality region of the node specified by node name.
@@ -33,7 +29,17 @@ func (yc *Cloud) GetZoneByNodeName(ctx context.Context, nodeName types.NodeName)
 		return cloudprovider.Zone{}, err
 	}
 
+	return yc.getZone(instance.ZoneId)
+}
+
+func (yc *Cloud) getZone(zone string) (cloudprovider.Zone, error) {
+	region, err := GetRegion(zone)
+	if err != nil {
+		return cloudprovider.Zone{}, err
+	}
+
 	return cloudprovider.Zone{
-		FailureDomain: instance.ZoneId,
+		Region:        region,
+		FailureDomain: zone,
 	}, nil
 }

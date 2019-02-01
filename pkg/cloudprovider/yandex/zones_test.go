@@ -18,7 +18,7 @@ func Test_Cloud_GetZone(t *testing.T) {
 
 	zone, err := cloud.GetZone(context.Background())
 	assert.Nil(t, err)
-	assert.Equal(t, "", zone.Region)
+	assert.Equal(t, "ru-central1", zone.Region)
 	assert.Equal(t, "ru-central1-a", zone.FailureDomain)
 }
 
@@ -28,7 +28,7 @@ func Test_Cloud_GetZoneByProviderID(t *testing.T) {
 
 	zone, err := cloud.GetZoneByProviderID(context.Background(), "yandex://b1g4c2a3g6vkffp3qacq/ru-central1-a/e2e-test-node0")
 	assert.Nil(t, err)
-	assert.Equal(t, "", zone.Region)
+	assert.Equal(t, "ru-central1", zone.Region)
 	assert.Equal(t, "ru-central1-a", zone.FailureDomain)
 }
 
@@ -45,6 +45,6 @@ func Test_Cloud_GetZoneByNodeName(t *testing.T) {
 
 	zone, err := cloud.GetZoneByNodeName(context.Background(), types.NodeName("e2e-test-node0"))
 	assert.Nil(t, err)
-	assert.Equal(t, "", zone.Region)
+	assert.Equal(t, "ru-central1", zone.Region)
 	assert.Equal(t, "ru-central1-a", zone.FailureDomain)
 }
