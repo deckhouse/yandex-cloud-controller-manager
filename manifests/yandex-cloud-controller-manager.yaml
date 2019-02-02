@@ -23,8 +23,8 @@ spec:
       labels:
         k8s-app: yandex-cloud-controller-manager
     spec:
-      dnsPolicy: Default
       hostNetwork: true
+      dnsPolicy: Default
       serviceAccountName: cloud-controller-manager
       nodeSelector:
         # The CCM will only run on masters
@@ -41,7 +41,7 @@ spec:
         - key: "CriticalAddonsOnly"
           operator: "Exists"
       containers:
-        - image: dlisin/yandex-cloud-controller-manager:dev
+        - image: dlisin/yandex-cloud-controller-manager:v0.1.0
           name: yandex-cloud-controller-manager
           command:
             - /bin/yandex-cloud-controller-manager

@@ -82,13 +82,13 @@ kubectl apply -f manifests/yandex-cloud-controller-manager.yaml
 kubectl apply -f manifests/yandex-cloud-controller-manager.yaml
 ```
 
-**NOTE**: the deployments in `manifests/` folder are meant to serve as an example. 
+**NOTE**: the deployments in `manifests` folder are meant to serve as an example. 
 They will work in a majority of cases but may not work out of the box for your cluster.
 
 
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language. 
-Currently, it is developed and tested on **Go 1.11.x**. 
+Currently, it is developed and tested on **Go 1.11.5**. 
 If you haven't set up a Go development environment yet, please follow [these instructions](https://golang.org/doc/install).
 
 ### Download Source
