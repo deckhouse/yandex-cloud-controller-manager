@@ -14,3 +14,6 @@
 *.iws
 .idea/
 .idea_modules/
+
+# Tmp
+.tmp/

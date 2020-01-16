@@ -1,7 +1,9 @@
 package yandex
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/yandex-cloud/go-sdk/iamkey"
 	"io"
 	"os"
 
@@ -14,15 +16,16 @@ import (
 const (
 	providerName = "yandex"
 
-	envAccessToken = "YANDEX_CLOUD_ACCESS_TOKEN"
-	envFolderID    = "YANDEX_CLOUD_FOLDER_ID"
+	envServiceAccountKey = "YANDEX_CLOUD_SERVICE_ACCOUNT_KEY"
+	envFolderID          = "YANDEX_CLOUD_FOLDER_ID"
+	envZone              = "YANDEX_CLOUD_ZONE"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
 type CloudConfig struct {
-	FolderID   string
-	LocalZone  string
-	OAuthToken ycsdk.Credentials
+	FolderID    string
+	LocalZone   string
+	Credentials ycsdk.Credentials
 }
 
 // Cloud is an implementation of cloudprovider.Interface for Yandex.Cloud
@@ -54,12 +57,22 @@ func NewCloudConfig() (*CloudConfig, error) {
 	cloudConfig := &CloudConfig{}
 	metadata := NewMetadataService()
 
-	// Retrieve Access Token
-	token := os.Getenv(envAccessToken)
-	if token == "" {
-		return nil, fmt.Errorf("environment variable %q is required", envAccessToken)
+	// Retrieve Servic Token
+	saKey := os.Getenv(envServiceAccountKey)
+	if saKey == "" {
+		return nil, fmt.Errorf("environment variable %q is required", envServiceAccountKey)
 	}
-	cloudConfig.OAuthToken = ycsdk.OAuthToken(token)
+	var iamKey iamkey.Key
+	err := json.Unmarshal([]byte(saKey), &iamKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "malformed auth keys")
+	}
+	credentials, err := ycsdk.ServiceAccountKey(&iamKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid auth credentials")
+	}
+
+	cloudConfig.Credentials = credentials
 
 	// Retrieve FolderID
 	// firstly - try to find it in env. variables
@@ -69,15 +82,20 @@ func NewCloudConfig() (*CloudConfig, error) {
 		var err error
 		folderID, err = metadata.GetFolderID()
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot get FolderID from instance metadata")
+			return nil, errors.Wrap(err, "cannot get FolderID from instance metadata")
 		}
 	}
 	cloudConfig.FolderID = folderID
 
-	// Retrieve LocalZone
-	localZone, err := metadata.GetZone()
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot get Zone from instance metadata")
+	// Retrieve FolderID
+	// firstly - try to find it in env. variables
+	localZone := os.Getenv(envZone)
+	if localZone == "" {
+		var err error
+		localZone, err = metadata.GetZone()
+		if err != nil {
+			return nil, errors.Wrap(err, "cannot get Zone from instance metadata")
+		}
 	}
 	cloudConfig.LocalZone = localZone
 

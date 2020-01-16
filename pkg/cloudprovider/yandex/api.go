@@ -22,7 +22,7 @@ type CloudAPI interface {
 // NewCloudAPI creates new instance of CloudAPI object
 func NewCloudAPI(config *CloudConfig) (CloudAPI, error) {
 	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: config.OAuthToken,
+		Credentials: config.Credentials,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Yandex.Cloud SDK: %s", err)

@@ -1,4 +1,4 @@
-FROM golang:1.11.5 as builder
+FROM golang:1.13.6 as builder
 
 ARG BUILD_VERSION
 ARG BUILD_DATE
@@ -14,9 +14,13 @@ ENV LDFLAGS="-X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/
              -X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitTreeState=${GIT_TREE_STATE}"
 
 WORKDIR /go/src/github.com/dlisin/yandex-cloud-controller-manager
+
+COPY go.mod  go.mod
+COPY go.sum  go.sum
+RUN go get -d -v ./...
+
 COPY cmd/    cmd/
 COPY pkg/    pkg/
-COPY vendor  vendor/
 RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "${LDFLAGS}" -a -o yandex-cloud-controller-manager ./cmd/yandex-cloud-controller-manager
 
 
