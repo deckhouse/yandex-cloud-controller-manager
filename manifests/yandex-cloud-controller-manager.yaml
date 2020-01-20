@@ -52,11 +52,11 @@ spec:
               cpu: 100m
               memory: 50Mi
           env:
-            - name: YANDEX_CLOUD_ACCESS_TOKEN
+            - name: YANDEX_CLOUD_SERVICE_ACCOUNT_JSON
               valueFrom:
                 secretKeyRef:
                   name: yandex-cloud
-                  key: access-token
+                  key: service-acount-json
             - name: YANDEX_CLOUD_FOLDER_ID
               valueFrom:
                 secretKeyRef:
