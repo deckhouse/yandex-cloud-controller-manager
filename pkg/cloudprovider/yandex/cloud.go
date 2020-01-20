@@ -16,7 +16,7 @@ import (
 const (
 	providerName = "yandex"
 
-	envServiceAccountJson = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
+	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
 )
 
@@ -57,12 +57,12 @@ func NewCloudConfig() (*CloudConfig, error) {
 	metadata := NewMetadataService()
 
 	// Retrieve Service Account Json
-	saJson := os.Getenv(envServiceAccountJson)
-	if saJson == "" {
-		return nil, fmt.Errorf("environment variable %q is required", envServiceAccountJson)
+	saJSON := os.Getenv(envServiceAccountJSON)
+	if saJSON == "" {
+		return nil, fmt.Errorf("environment variable %q is required", envServiceAccountJSON)
 	}
 	var iamKey iamkey.Key
-	err := json.Unmarshal([]byte(saJson), &iamKey)
+	err := json.Unmarshal([]byte(saJSON), &iamKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "malformed service account json")
 	}
