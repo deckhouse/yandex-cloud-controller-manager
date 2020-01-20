@@ -86,6 +86,13 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 	cloudConfig.FolderID = folderID
 
+	// Retrieve LocalZone
+	localZone, err := metadata.GetZone()
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot get Zone from instance metadata")
+	}
+	cloudConfig.LocalZone = localZone
+
 	return cloudConfig, nil
 }
 
