@@ -9,8 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-	"k8s.io/kubernetes/pkg/cloudprovider"
-	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/cloud-provider"
 )
 
 const (
@@ -105,7 +104,7 @@ func NewCloud(config *CloudConfig, api CloudAPI) *Cloud {
 }
 
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
-func (yc *Cloud) Initialize(clientBuilder controller.ControllerClientBuilder) {
+func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
 }
 
 // LoadBalancer returns a balancer interface if supported.

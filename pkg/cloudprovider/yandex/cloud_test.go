@@ -3,7 +3,7 @@ package yandex_test
 import (
 	"testing"
 
-	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	. "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 var (

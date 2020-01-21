@@ -1,8 +1,8 @@
 # Kubernetes Cloud Controller Manager for Yandex.Cloud
-[![Build Status](https://travis-ci.org/dlisin/yandex-cloud-controller-manager.svg?branch=master)](https://travis-ci.org/dlisin/yandex-cloud-controller-manager)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dlisin/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/dlisin/yandex-cloud-controller-manager)
-[![codecov](https://codecov.io/gh/dlisin/yandex-cloud-controller-manager/branch/master/graph/badge.svg)](https://codecov.io/gh/dlisin/yandex-cloud-controller-manager)
-[![Docker Pulls](https://img.shields.io/docker/pulls/dlisin/yandex-cloud-controller-manager.svg)](https://hub.docker.com/r/dlisin/yandex-cloud-controller-manager/)
+[![Build Status](https://travis-ci.org/flant/yandex-cloud-controller-manager.svg?branch=master)](https://travis-ci.org/flant/yandex-cloud-controller-manager)
+[![Go Report Card](https://goreportcard.com/badge/github.com/flant/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/flant/yandex-cloud-controller-manager)
+[![codecov](https://codecov.io/gh/flant/yandex-cloud-controller-manager/branch/master/graph/badge.svg)](https://codecov.io/gh/flant/yandex-cloud-controller-manager)
+[![Docker Pulls](https://img.shields.io/docker/pulls/flant/yandex-cloud-controller-manager.svg)](https://hub.docker.com/r/flant/yandex-cloud-controller-manager/)
 
 ## Overview
 `yandex-cloud-controller-manager` is the Kubernetes Cloud Controller Manager (CCM) implementation for Yandex.Cloud.

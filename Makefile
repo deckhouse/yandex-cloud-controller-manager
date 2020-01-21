@@ -4,7 +4,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || true)
 GIT_TREE_STATE ?= $(shell if git_status=$$(git status --porcelain 2>/dev/null) && test -z "$$git_status"; then echo clean; else echo dirty; fi)
 
 DOCKER_TAG ?= dev
-DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:${DOCKER_TAG}
+DOCKER_IMG ?= flant/yandex-cloud-controller-manager:${DOCKER_TAG}
 
 all: test
 

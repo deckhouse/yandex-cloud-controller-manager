@@ -10,7 +10,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	. "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 func Test_Cloud_NodeAddresses(t *testing.T) {

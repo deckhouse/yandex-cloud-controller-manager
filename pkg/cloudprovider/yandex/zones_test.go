@@ -9,7 +9,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	. "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 func Test_Cloud_GetZone(t *testing.T) {

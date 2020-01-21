@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/types"
 
-	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	. "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 func Test_GetRegion(t *testing.T) {

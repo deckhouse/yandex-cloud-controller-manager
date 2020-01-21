@@ -8,12 +8,12 @@ ARG CGO_ENABLED=0
 ARG GOOS=linux
 ARG GOARCH=amd64
 
-ENV LDFLAGS="-X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.buildDate=${BUILD_DATE} \
-             -X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitVersion=${BUILD_VERSION} \
-             -X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitCommit=${GIT_COMMIT} \
-             -X github.com/dlisin/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitTreeState=${GIT_TREE_STATE}"
+ENV LDFLAGS="-X github.com/flant/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.buildDate=${BUILD_DATE} \
+             -X github.com/flant/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitVersion=${BUILD_VERSION} \
+             -X github.com/flant/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitCommit=${GIT_COMMIT} \
+             -X github.com/flant/yandex-cloud-controller-manager/vendor/k8s.io/kubernetes/pkg/version.gitTreeState=${GIT_TREE_STATE}"
 
-WORKDIR /go/src/github.com/dlisin/yandex-cloud-controller-manager
+WORKDIR /go/src/github.com/flant/yandex-cloud-controller-manager
 
 COPY go.mod  go.mod
 COPY go.sum  go.sum
@@ -27,6 +27,6 @@ RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "
 FROM alpine:3.8
 
 RUN apk add --no-cache ca-certificates
-COPY --from=builder /go/src/github.com/dlisin/yandex-cloud-controller-manager/yandex-cloud-controller-manager /bin/
+COPY --from=builder /go/src/github.com/flant/yandex-cloud-controller-manager/yandex-cloud-controller-manager /bin/
 
 CMD ["/bin/yandex-cloud-controller-manager"]

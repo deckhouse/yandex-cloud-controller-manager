@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	. "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	. "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 )
 
 var (
