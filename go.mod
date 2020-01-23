@@ -7,6 +7,7 @@ require (
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dankinder/httpmock v1.0.0
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
+	github.com/golang/protobuf v1.3.2
 	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
@@ -20,9 +21,11 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
-	github.com/yandex-cloud/go-genproto v0.0.0-20181203102959-35363689036d
-	github.com/yandex-cloud/go-sdk v0.0.0-20181219124549-502c28a5a114
+	github.com/yandex-cloud/go-genproto v0.0.0-20200120125058-c0ac392b52a2
+	github.com/yandex-cloud/go-sdk v0.0.0-20200113201139-dc3c759a1204
 	go.uber.org/zap v1.13.0 // indirect
+	google.golang.org/genproto v0.0.0-20190927181202-20e1ac93f88c
+	google.golang.org/grpc v1.24.0
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
 	k8s.io/cloud-provider v0.17.1

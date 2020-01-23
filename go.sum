@@ -550,10 +550,10 @@ github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 h1:eY9dn8+vbi4tKz5
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xlab/handysort v0.0.0-20150421192137-fb3537ed64a1/go.mod h1:QcJo0QPSfTONNIgpN5RA8prR7fF8nkF6cTWTcNerRO8=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
-github.com/yandex-cloud/go-genproto v0.0.0-20181203102959-35363689036d h1:pCTDhQpyk5QwbDGzRXw9F9YyzEe9UB/QILF0i5cMG/8=
-github.com/yandex-cloud/go-genproto v0.0.0-20181203102959-35363689036d/go.mod h1:HEUYX/p8966tMUHHT+TsS0hF/Ca/NYwqprC5WXSDMfE=
-github.com/yandex-cloud/go-sdk v0.0.0-20181219124549-502c28a5a114 h1:QF1WCDvQv0p2QeJrkRMeJO4Ua9+7+L7k7QT2aS9DvZg=
-github.com/yandex-cloud/go-sdk v0.0.0-20181219124549-502c28a5a114/go.mod h1:Eml0jFLU4VVHgIN8zPHMuNwZXVzUMILyO6lQZSfz854=
+github.com/yandex-cloud/go-genproto v0.0.0-20200120125058-c0ac392b52a2 h1:idWoUhTZJeCR0zw7V7s5LDvg+k9Xk6dHBlwVJS14Bbw=
+github.com/yandex-cloud/go-genproto v0.0.0-20200120125058-c0ac392b52a2/go.mod h1:HEUYX/p8966tMUHHT+TsS0hF/Ca/NYwqprC5WXSDMfE=
+github.com/yandex-cloud/go-sdk v0.0.0-20200113201139-dc3c759a1204 h1:6KMrhpceeAxyrYk2HPUybaxUdi7CfT7UFQBGpV+Tsso=
+github.com/yandex-cloud/go-sdk v0.0.0-20200113201139-dc3c759a1204/go.mod h1:Eml0jFLU4VVHgIN8zPHMuNwZXVzUMILyO6lQZSfz854=
 go.etcd.io/bbolt v1.3.3 h1:MUGmc65QhB3pIlaQ5bB4LwqSj6GIonVJXpZiaKNyaKk=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738 h1:VcrIfasaLFkyjk6KNlXQSzO+B0fZcnECiDrKJsfxka0=

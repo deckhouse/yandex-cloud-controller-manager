@@ -17,10 +17,12 @@ const (
 
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
+	envNetworkID          = "YANDEX_CLOUD_NETWORK_ID"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
 type CloudConfig struct {
+	NetworkID   string
 	FolderID    string
 	LocalZone   string
 	Credentials ycsdk.Credentials
@@ -41,7 +43,7 @@ func init() {
 				return nil, err
 			}
 
-			api, err := NewCloudAPI(config)
+			api, err := NewYandexCloudAPI(config)
 			if err != nil {
 				return nil, err
 			}
@@ -85,6 +87,8 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 	cloudConfig.FolderID = folderID
 
+	cloudConfig.NetworkID = os.Getenv(envNetworkID)
+
 	// Retrieve LocalZone
 	localZone, err := metadata.GetZone()
 	if err != nil {
@@ -104,12 +108,12 @@ func NewCloud(config *CloudConfig, api CloudAPI) *Cloud {
 }
 
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
-func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
+func (yc *Cloud) Initialize(_ cloudprovider.ControllerClientBuilder, _ <-chan struct{}) {
 }
 
 // LoadBalancer returns a balancer interface if supported.
 func (yc *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
-	return nil, false
+	return yc, true
 }
 
 // Instances returns an instances interface if supported.
