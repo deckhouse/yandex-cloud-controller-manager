@@ -6,6 +6,7 @@ import (
 	"github.com/yandex-cloud/go-sdk/iamkey"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 	ycsdk "github.com/yandex-cloud/go-sdk"
@@ -18,13 +19,19 @@ const (
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
 	envNetworkID          = "YANDEX_CLOUD_NETWORK_ID"
+	envInternalSubnetIDs  = "YANDEX_INTERNAL_SUBNET_IDS"
+	envExternalSubnetIDs  = "YANDEX_EXTERNAL_SUBNET_IDS"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
 type CloudConfig struct {
-	NetworkID   string
-	FolderID    string
-	LocalZone   string
+	NetworkID string
+	FolderID  string
+	LocalZone string
+
+	InternalSubnetIDsSet map[string]struct{}
+	ExternalSubnetIDsSet map[string]struct{}
+
 	Credentials ycsdk.Credentials
 }
 
@@ -88,6 +95,16 @@ func NewCloudConfig() (*CloudConfig, error) {
 	cloudConfig.FolderID = folderID
 
 	cloudConfig.NetworkID = os.Getenv(envNetworkID)
+
+	cloudConfig.InternalSubnetIDsSet = make(map[string]struct{})
+	for _, subnetID := range strings.Split(os.Getenv(envInternalSubnetIDs), ",") {
+		cloudConfig.InternalSubnetIDsSet[subnetID] = struct{}{}
+	}
+
+	cloudConfig.ExternalSubnetIDsSet = make(map[string]struct{})
+	for _, subnetID := range strings.Split(os.Getenv(envExternalSubnetIDs), ",") {
+		cloudConfig.ExternalSubnetIDsSet[subnetID] = struct{}{}
+	}
 
 	// Retrieve LocalZone
 	localZone, err := metadata.GetZone()
