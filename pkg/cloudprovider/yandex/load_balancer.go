@@ -101,13 +101,14 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 			if err != nil {
 				return nil, err
 			}
-
 			if len(lbParams.targetGroupNetworkID) != 0 {
-				newTargets, err := yc.verifyNetworkMembershipOfAllIfaces(ctx, instance, lbParams.targetGroupNetworkID)
-				if err != nil {
-					return nil, errors.WithStack(err)
+				if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
+					newTargets, err := yc.verifyNetworkMembershipOfAllIfaces(ctx, instance, lbParams.targetGroupNetworkID)
+					if err != nil {
+						return nil, errors.WithStack(err)
+					}
+					targets = append(targets, newTargets...)
 				}
-				targets = append(targets, newTargets...)
 			} else {
 				targets = append(targets, &loadbalancer.Target{
 					SubnetId: instance.NetworkInterfaces[0].SubnetId,
