@@ -18,9 +18,9 @@ const (
 
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
-	envNetworkID          = "YANDEX_CLOUD_NETWORK_ID"
-	envInternalNetworkIDs = "YANDEX_INTERNAL_NETWORK_IDS"
-	envExternalNetworkIDs = "YANDEX_EXTERNAL_NETWORK_IDS"
+	envNetworkID          = "YANDEX_CLOUD_DEFAULT_LB_NETWORK_ID"
+	envInternalNetworkIDs = "YANDEX_CLOUD_INTERNAL_NETWORK_IDS"
+	envExternalNetworkIDs = "YANDEX_CLOUD_EXTERNAL_NETWORK_IDS"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
