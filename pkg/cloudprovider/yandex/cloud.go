@@ -19,8 +19,8 @@ const (
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
 	envNetworkID          = "YANDEX_CLOUD_NETWORK_ID"
-	envInternalSubnetIDs  = "YANDEX_INTERNAL_SUBNET_IDS"
-	envExternalSubnetIDs  = "YANDEX_EXTERNAL_SUBNET_IDS"
+	envInternalNetworkIDs = "YANDEX_INTERNAL_NETWORK_IDS"
+	envExternalNetworkIDs = "YANDEX_EXTERNAL_NETWORK_IDS"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
@@ -29,8 +29,8 @@ type CloudConfig struct {
 	FolderID  string
 	LocalZone string
 
-	InternalSubnetIDsSet map[string]struct{}
-	ExternalSubnetIDsSet map[string]struct{}
+	InternalNetworkIDsSet map[string]struct{}
+	ExternalNetworkIDsSet map[string]struct{}
 
 	Credentials ycsdk.Credentials
 }
@@ -96,14 +96,14 @@ func NewCloudConfig() (*CloudConfig, error) {
 
 	cloudConfig.NetworkID = os.Getenv(envNetworkID)
 
-	cloudConfig.InternalSubnetIDsSet = make(map[string]struct{})
-	for _, subnetID := range strings.Split(os.Getenv(envInternalSubnetIDs), ",") {
-		cloudConfig.InternalSubnetIDsSet[subnetID] = struct{}{}
+	cloudConfig.InternalNetworkIDsSet = make(map[string]struct{})
+	for _, networkID := range strings.Split(os.Getenv(envInternalNetworkIDs), ",") {
+		cloudConfig.InternalNetworkIDsSet[networkID] = struct{}{}
 	}
 
-	cloudConfig.ExternalSubnetIDsSet = make(map[string]struct{})
-	for _, subnetID := range strings.Split(os.Getenv(envExternalSubnetIDs), ",") {
-		cloudConfig.ExternalSubnetIDsSet[subnetID] = struct{}{}
+	cloudConfig.ExternalNetworkIDsSet = make(map[string]struct{})
+	for _, networkID := range strings.Split(os.Getenv(envExternalNetworkIDs), ",") {
+		cloudConfig.ExternalNetworkIDsSet[networkID] = struct{}{}
 	}
 
 	// Retrieve LocalZone

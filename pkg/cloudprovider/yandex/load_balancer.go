@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	targetGroupVpcIdAnnotation = "yandex.cpi.flant.com/target-group-vpc-id"
-	listenerSubnetIdAnnotation = "yandex.cpi.flant.com/listener-subnet-id"
+	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-vpc-id"
+	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
 )
 
 type LoadBalancerService interface {
@@ -97,25 +97,22 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 	var targets []*loadbalancer.Target
 	for _, node := range nodes {
 		for _, address := range node.Status.Addresses {
-			// support only InternalIPs for now
-			if address.Type == v1.NodeInternalIP {
-				instance, err := yc.api.FindInstanceByFolderAndName(ctx, yc.config.FolderID, MapNodeNameToInstanceName(types.NodeName(node.Name)))
-				if err != nil {
-					return nil, err
-				}
+			instance, err := yc.api.FindInstanceByFolderAndName(ctx, yc.config.FolderID, MapNodeNameToInstanceName(types.NodeName(node.Name)))
+			if err != nil {
+				return nil, err
+			}
 
-				if len(lbParams.targetGroupVpcID) != 0 {
-					newTargets, err := yc.verifyNetworkMembershipOfAllIfaces(ctx, instance, lbParams.targetGroupVpcID)
-					if err != nil {
-						return nil, errors.WithStack(err)
-					}
-					targets = append(targets, newTargets...)
-				} else {
-					targets = append(targets, &loadbalancer.Target{
-						SubnetId: instance.NetworkInterfaces[0].SubnetId,
-						Address:  address.Address,
-					})
+			if len(lbParams.targetGroupNetworkID) != 0 {
+				newTargets, err := yc.verifyNetworkMembershipOfAllIfaces(ctx, instance, lbParams.targetGroupNetworkID)
+				if err != nil {
+					return nil, errors.WithStack(err)
 				}
+				targets = append(targets, newTargets...)
+			} else {
+				targets = append(targets, &loadbalancer.Target{
+					SubnetId: instance.NetworkInterfaces[0].SubnetId,
+					Address:  address.Address,
+				})
 			}
 		}
 	}
@@ -190,9 +187,9 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 }
 
 type loadBalancerParameters struct {
-	targetGroupVpcID string
-	listenerSubnetID string
-	internal         bool
+	targetGroupNetworkID string
+	listenerSubnetID     string
+	internal             bool
 }
 
 func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalancerParameters) {
@@ -201,16 +198,16 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.listenerSubnetID = value
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[targetGroupVpcIdAnnotation]; ok {
-		lbParams.targetGroupVpcID = value
+	if value, ok := svc.ObjectMeta.Annotations[targetGroupNetworkIdAnnotation]; ok {
+		lbParams.targetGroupNetworkID = value
 	} else if len(yc.config.NetworkID) != 0 {
-		lbParams.targetGroupVpcID = yc.config.NetworkID
+		lbParams.targetGroupNetworkID = yc.config.NetworkID
 	}
 
 	return
 }
 
-func (yc *Cloud) verifyNetworkMembershipOfAllIfaces(ctx context.Context, instance *compute.Instance, vpcId string) (lbTargets []*loadbalancer.Target, err error) {
+func (yc *Cloud) verifyNetworkMembershipOfAllIfaces(ctx context.Context, instance *compute.Instance, networkId string) (lbTargets []*loadbalancer.Target, err error) {
 	sdk := yc.api.GetSDK()
 
 	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
@@ -220,7 +217,7 @@ func (yc *Cloud) verifyNetworkMembershipOfAllIfaces(ctx context.Context, instanc
 			return nil, errors.WithStack(err)
 		}
 
-		if subnetInfo.NetworkId == vpcId {
+		if subnetInfo.NetworkId == networkId {
 			lbTargets = append(lbTargets, &loadbalancer.Target{
 				SubnetId: iface.SubnetId,
 				Address:  iface.PrimaryV4Address.Address,
@@ -229,7 +226,7 @@ func (yc *Cloud) verifyNetworkMembershipOfAllIfaces(ctx context.Context, instanc
 	}
 
 	if len(lbTargets) == 0 {
-		return nil, errors.New(fmt.Sprintf("no subnets found to be a member of %q VPC", vpcId))
+		return nil, errors.New(fmt.Sprintf("no subnets found to be a member of %q VPC", networkId))
 	}
 
 	return

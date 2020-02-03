@@ -3,6 +3,9 @@ package yandex
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
+	ycsdk "github.com/yandex-cloud/go-sdk"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	v1 "k8s.io/api/core/v1"
@@ -17,7 +20,7 @@ func (yc *Cloud) NodeAddresses(ctx context.Context, nodeName types.NodeName) ([]
 		return []v1.NodeAddress{}, err
 	}
 
-	return yc.nodeAddresses(instance)
+	return yc.nodeAddresses(ctx, instance)
 }
 
 // NodeAddressesByProviderID returns the addresses of the node specified by providerID
@@ -27,7 +30,7 @@ func (yc *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID strin
 		return []v1.NodeAddress{}, err
 	}
 
-	return yc.nodeAddresses(instance)
+	return yc.nodeAddresses(ctx, instance)
 }
 
 // InstanceID returns the cloud provider ID of the node with the specified nodeName.
@@ -89,19 +92,24 @@ func (yc *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID st
 }
 
 // nodeAddresses maps the instance information to an array of NodeAddresses
-func (yc *Cloud) nodeAddresses(instance *compute.Instance) ([]v1.NodeAddress, error) {
+func (yc *Cloud) nodeAddresses(ctx context.Context, instance *compute.Instance) ([]v1.NodeAddress, error) {
 	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) < 1 {
-		return []v1.NodeAddress{}, fmt.Errorf("could not find network interfaces for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
+		return nil, fmt.Errorf("could not find network interfaces for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
 	}
 
 	var nodeAddresses []v1.NodeAddress
 
-	if len(yc.config.InternalSubnetIDsSet) > 0 {
+	if len(yc.config.InternalNetworkIDsSet) > 0 {
 		for _, iface := range instance.NetworkInterfaces {
-			if _, ok := yc.config.InternalSubnetIDsSet[iface.SubnetId]; ok {
+			networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
+			if err != nil {
+				return nil, err
+			}
+
+			if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
 			}
-			if _, ok := yc.config.ExternalSubnetIDsSet[iface.SubnetId]; ok {
+			if _, ok := yc.config.ExternalNetworkIDsSet[networkID]; ok {
 				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.Address})
 			}
 		}
@@ -113,7 +121,7 @@ func (yc *Cloud) nodeAddresses(instance *compute.Instance) ([]v1.NodeAddress, er
 
 	networkInterface := instance.NetworkInterfaces[0]
 	if networkInterface.PrimaryV4Address == nil {
-		return []v1.NodeAddress{}, fmt.Errorf("could not find primary IPv4 address for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
+		return nil, fmt.Errorf("could not find primary IPv4 address for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
 	}
 
 	nodeAddresses = []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address}}
@@ -156,4 +164,14 @@ func (yc *Cloud) getInstanceByFolderAndName(ctx context.Context, folderID, insta
 	}
 
 	return instance, nil
+}
+
+func mapSubnetIdToNetworkID(ctx context.Context, sdk *ycsdk.SDK, subnetID string) (string, error) {
+	// TODO: cache
+	subnet, err := sdk.VPC().Subnet().Get(ctx, &vpc.GetSubnetRequest{SubnetId: subnetID})
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	return subnet.NetworkId, nil
 }
