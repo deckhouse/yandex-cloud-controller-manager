@@ -3,6 +3,10 @@ package yandex
 import (
 	"context"
 	"fmt"
+	"log"
+	"strconv"
+	"strings"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
@@ -13,8 +17,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -82,10 +84,11 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 		AttachedTargetGroups: attachedTGs,
 	}
 
+	log.Printf("Getting LB by name: %q", name)
 	lb, err := api.getLbByName(ctx, name)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			fmt.Println("new LB, skipping checks")
+			log.Println("LB not found, creating new LB")
 		} else {
 			return nil, err
 		}
@@ -101,12 +104,14 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 		}
 	}
 
+	log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
+
 	result, _, err := api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().NetworkLoadBalancer().Create(ctx, lbCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
-			fmt.Printf("LB %q already exists, attempting an update\n", name)
+			log.Printf("LB %q already exists, attempting an update\n", name)
 		} else {
 			return nil, err
 		}
@@ -133,6 +138,8 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 		AttachedTargetGroups: attachedTGs,
 	}
 
+	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
+
 	result, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().NetworkLoadBalancer().Update(ctx, lbUpdateRequest)
 	})
@@ -149,6 +156,7 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 }
 
 func (api *YandexCloudAPI) GetLbByName(ctx context.Context, name string) (*v1.LoadBalancerStatus, bool, error) {
+	log.Printf("Retrieving LB by name %q", name)
 	lb, err := api.getLbByName(ctx, name)
 	if err != nil {
 		return &v1.LoadBalancerStatus{}, false, err
@@ -169,12 +177,13 @@ func (api *YandexCloudAPI) GetLbByName(ctx context.Context, name string) (*v1.Lo
 }
 
 func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
+	log.Printf("Retrieving LB by name %q", name)
 	lb, err := api.getLbByName(ctx, name)
 	if err != nil {
 		return err
 	}
 	if lb == nil {
-		fmt.Printf("LB by Name %q does not exists, skipping deletion\n", name)
+		log.Printf("LB by Name %q does not exists, skipping deletion\n", name)
 		return nil
 	}
 
@@ -182,12 +191,13 @@ func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
 		NetworkLoadBalancerId: lb.Id,
 	}
 
+	fmt.Printf("Deleting LB by ID %q", lb.Id)
 	_, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			fmt.Printf("LB %q does not exist, skipping\n", name)
+			log.Printf("LB %q does not exist, skipping\n", name)
 		} else {
 			return err
 		}
@@ -196,20 +206,24 @@ func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
 	return nil
 }
 
-func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, name string, targets []*loadbalancer.Target) (string, error) {
+func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
 	tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
 		FolderId: api.folderID,
-		Name:     name,
+		Name:     tgName,
 		RegionId: api.regionID,
 		Targets:  targets,
 	}
+
+	log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
 
 	result, _, err := api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().TargetGroup().Create(ctx, tgCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
-			fmt.Printf("TG by name %q already exists, attempting an update\n", name)
+			log.Printf("TG by name %q already exists, attempting an update\n", tgName)
+		} else if status.Code(err) == codes.FailedPrecondition && strings.Contains(status.Convert(err).Message(), "One of the targets already a part of the another target group") {
+			log.Printf("TG with the same targets exists already, attempting an update")
 		} else {
 			return "", err
 		}
@@ -217,8 +231,8 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, name string, ta
 		return result.(*loadbalancer.TargetGroup).Id, nil
 	}
 
-	// trying to get TG with the same name as LB
-	tg, err := api.getTgByName(ctx, name)
+	fmt.Printf("retrieving TargetGroup by name %q", tgName)
+	tg, err := api.GetTgByName(ctx, tgName)
 	if err != nil {
 		return "", err
 	}
@@ -226,10 +240,12 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, name string, ta
 	tgUpdateRequest := &loadbalancer.UpdateTargetGroupRequest{
 		TargetGroupId: tg.Id,
 		UpdateMask: &field_mask.FieldMask{
-			Paths: []string{"targets"},
+			Paths: []string{"targets", "labels"},
 		},
 		Targets: targets,
 	}
+
+	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
 
 	result, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().TargetGroup().Update(ctx, tgUpdateRequest)
@@ -241,9 +257,10 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, name string, ta
 	return result.(*loadbalancer.TargetGroup).Id, nil
 }
 
+// TODO: Think about removing TG after all LBs are gone
 func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
 	// trying to get TG with the same name as LB
-	tg, err := api.getTgByName(ctx, name)
+	tg, err := api.GetTgByName(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -257,7 +274,7 @@ func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			fmt.Printf("TG %q does not exist, skipping\n", name)
+			log.Printf("TG %q does not exist, skipping\n", name)
 		} else {
 			return err
 		}
@@ -309,7 +326,7 @@ func (api *YandexCloudAPI) getLbByName(ctx context.Context, name string) (*loadb
 	return result.NetworkLoadBalancers[0], nil
 }
 
-func (api *YandexCloudAPI) getTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
+func (api *YandexCloudAPI) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
 	result, err := api.sdk.LoadBalancer().TargetGroup().List(ctx, &loadbalancer.ListTargetGroupsRequest{
 		FolderId: api.folderID,
 		PageSize: 2,
@@ -351,7 +368,7 @@ func (api *YandexCloudAPI) waitForResult(ctx context.Context, origFunc func() (*
 
 func shouldRecreate(oldBalancer *loadbalancer.NetworkLoadBalancer, newBalancerSpec *loadbalancer.CreateNetworkLoadBalancerRequest) bool {
 	if newBalancerSpec.Type != oldBalancer.Type {
-		fmt.Println("LB type mismatch, recreating")
+		log.Println("LB type mismatch, recreating")
 		return true
 	}
 

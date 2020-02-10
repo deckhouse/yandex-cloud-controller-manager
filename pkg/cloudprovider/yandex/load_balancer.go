@@ -3,15 +3,14 @@ package yandex
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cloud-provider/service/helpers"
+	"log"
 	"strconv"
 	"strings"
+
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
+	v1 "k8s.io/api/core/v1"
+	svchelpers "k8s.io/cloud-provider/service/helpers"
+	"k8s.io/kubernetes/pkg/master/ports"
 )
 
 const (
@@ -31,8 +30,9 @@ type LoadBalancerManager interface {
 }
 
 type TargetGroupManager interface {
-	CreateOrUpdateTG(ctx context.Context, name string, targets []*loadbalancer.Target) (string, error)
-	RemoveTG(ctx context.Context, id string) error
+	CreateOrUpdateTG(ctx context.Context, LbName string, targets []*loadbalancer.Target) (string, error)
+	GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error)
+	RemoveTG(ctx context.Context, name string) error
 }
 
 var kubeToYandexServiceProtoMapping = map[v1.Protocol]loadbalancer.Listener_Protocol{
@@ -67,8 +67,6 @@ func (yc *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, _ string, servic
 		return err
 	}
 
-	err = yc.api.RemoveTG(ctx, lbName)
-
 	return err
 }
 
@@ -83,7 +81,7 @@ func defaultLoadBalancerName(service *v1.Service) string {
 
 func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	// sanity checks
-	// TODO: current API restrictions
+	// current API restrictions
 	if len(service.Spec.Ports) > 10 {
 		return nil, fmt.Errorf("Yandex.Cloud API does not support more than 10 listener port specifications")
 	}
@@ -93,35 +91,6 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 
 	lbName := defaultLoadBalancerName(service)
 	lbParams := yc.getLoadBalancerParameters(service)
-
-	var targets []*loadbalancer.Target
-	for _, node := range nodes {
-		for _, address := range node.Status.Addresses {
-			instance, err := yc.api.FindInstanceByFolderAndName(ctx, yc.config.FolderID, MapNodeNameToInstanceName(types.NodeName(node.Name)))
-			if err != nil {
-				return nil, err
-			}
-			if len(lbParams.targetGroupNetworkID) != 0 {
-				if address.Type == v1.NodeInternalIP || address.Type == v1.NodeExternalIP {
-					newTargets, err := yc.verifyNetworkMembershipOfAllIfaces(ctx, instance, lbParams.targetGroupNetworkID)
-					if err != nil {
-						return nil, errors.WithStack(err)
-					}
-					targets = append(targets, newTargets...)
-				}
-			} else {
-				targets = append(targets, &loadbalancer.Target{
-					SubnetId: instance.NetworkInterfaces[0].SubnetId,
-					Address:  address.Address,
-				})
-			}
-		}
-	}
-
-	tgId, err := yc.api.CreateOrUpdateTG(ctx, lbName, targets)
-	if err != nil {
-		return nil, err
-	}
 
 	var listenerSpecs []*loadbalancer.ListenerSpec
 	for index, svcPort := range service.Spec.Ports {
@@ -153,13 +122,13 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		listenerSpecs = append(listenerSpecs, listenerSpec)
 	}
 
-	hcPath, hcPort := helpers.GetServiceHealthCheckPathPort(service)
-	if len(hcPath) == 0 || hcPort == 0 {
-		hcPath = "/"
-		hcPort = 80
+	hcPath, hcPort := "/healthz", int32(ports.ProxyHealthzPort)
+	if svchelpers.RequestsOnlyLocalTraffic(service) {
+		// Service requires a special health check, retrieve the OnlyLocal port & path
+		hcPath, hcPort = svchelpers.GetServiceHealthCheckPathPort(service)
 	}
 
-	// FIXME: Proper fucking healthchecks
+	log.Printf("Health checking on path %q and port %v", hcPath, hcPort)
 	healthChecks := []*loadbalancer.HealthCheck{
 		{
 			Name:               "kube-health-check",
@@ -174,9 +143,15 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		},
 	}
 
+	// TODO: ClusterID
+	tg, err := yc.api.GetTgByName(ctx, lbParams.targetGroupNetworkID)
+	if err != nil {
+		return nil, err
+	}
+
 	lbStatus, err := yc.api.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{
 		{
-			TargetGroupId: tgId,
+			TargetGroupId: tg.Id,
 			HealthChecks:  healthChecks,
 		},
 	})
@@ -203,31 +178,6 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.targetGroupNetworkID = value
 	} else if len(yc.config.NetworkID) != 0 {
 		lbParams.targetGroupNetworkID = yc.config.NetworkID
-	}
-
-	return
-}
-
-func (yc *Cloud) verifyNetworkMembershipOfAllIfaces(ctx context.Context, instance *compute.Instance, networkId string) (lbTargets []*loadbalancer.Target, err error) {
-	sdk := yc.api.GetSDK()
-
-	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
-	for _, iface := range instance.NetworkInterfaces {
-		subnetInfo, err := sdk.VPC().Subnet().Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		if subnetInfo.NetworkId == networkId {
-			lbTargets = append(lbTargets, &loadbalancer.Target{
-				SubnetId: iface.SubnetId,
-				Address:  iface.PrimaryV4Address.Address,
-			})
-		}
-	}
-
-	if len(lbTargets) == 0 {
-		return nil, errors.New(fmt.Sprintf("no subnets found to be a member of %q VPC", networkId))
 	}
 
 	return

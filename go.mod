@@ -6,6 +6,7 @@ require (
 	github.com/NYTimes/gziphandler v1.0.1 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dankinder/httpmock v1.0.0
+	github.com/deckarep/golang-set v1.7.1
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/googleapis/gnostic v0.2.0 // indirect
@@ -28,8 +29,10 @@ require (
 	google.golang.org/grpc v1.24.0
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
+	k8s.io/client-go v0.17.1
 	k8s.io/cloud-provider v0.17.1
 	k8s.io/component-base v0.17.1
+	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.17.1
 )
 
