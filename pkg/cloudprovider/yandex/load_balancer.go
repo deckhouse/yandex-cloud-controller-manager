@@ -144,7 +144,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 	}
 
 	// TODO: ClusterID
-	tg, err := yc.api.GetTgByName(ctx, lbParams.targetGroupNetworkID)
+	tg, err := yc.api.GetTgByName(ctx, yc.config.ClusterName+lbParams.targetGroupNetworkID)
 	if err != nil {
 		return nil, err
 	}

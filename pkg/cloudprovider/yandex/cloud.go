@@ -334,7 +334,7 @@ func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*
 
 	for networkID, targets := range mapping {
 		// TODO: unique ClusterID
-		_, err := yc.api.CreateOrUpdateTG(ctx, networkID, targets)
+		_, err := yc.api.CreateOrUpdateTG(ctx, yc.config.ClusterName+networkID, targets)
 		if err != nil {
 			return err
 		}
