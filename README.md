@@ -50,9 +50,10 @@ This means that most pods will be left unschedulable until the CCM is running.
 ### Deployment
 
 #### Authentication and Configuration
-The `yandex-cloud-controller-manager` requires a [Service Account Json]([https://cloud.yandex.com/docs/iam/operations/iam-token/create-for-sa#via-cli]) and the Folder ID stored in the following environment variables:
+The `yandex-cloud-controller-manager` requires a [Service Account Json]([https://cloud.yandex.com/docs/iam/operations/iam-token/create-for-sa#via-cli]), Folder ID and a Cloud-unique cluster Name stored in the following environment variables:
 * `YANDEX_CLOUD_SERVICE_ACCOUNT_JSON`
 * `YANDEX_CLOUD_FOLDER_ID`
+* `YANDEX_CLUSTER_NAME`
 
 The default manifest is configured to set these environment variables from a secret named `yandex-cloud`:
 
@@ -93,7 +94,7 @@ kubectl apply -f manifests/yandex-cloud-controller-manager.yaml
 **NOTE**: the deployments in `manifests` folder are meant to serve as an example.
 They will work in a majority of cases but may not work out of the box for your cluster.
 
-### Subsystem-specific environment variables
+### Subsystem-specific information
 
 #### Node Controller
 
@@ -106,6 +107,12 @@ They will work in a majority of cases but may not work out of the box for your c
     * Optional.
 
 #### Service Controller
+
+##### Operation peculiarities
+
+Due to Yandex.Cloud's TargetGroup's inability to create duplicate (same SubnetID and IP address) Targets, this CCM takes all Nodes in the clusters, finds its Yandex.Cloud Instance counterpart via the API, scans the Instance's Interfaces and determines all possible sets of NetworkIDs that exist on these instances. After doing so, it creates multiple TargetGroups that are named after aforementioned NetworkIDs and include Targets from said Networks.
+
+Due to API limitations, only one subnet from each zone must be present in each NetworkID present on Instance's network interfaces.
 
 ##### CCM environment variables
 
