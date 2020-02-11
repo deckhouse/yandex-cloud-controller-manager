@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	utilflag "k8s.io/apiserver/pkg/util/flag"
-	"k8s.io/apiserver/pkg/util/logs"
+	"k8s.io/component-base/cli/flag"
+	"k8s.io/component-base/logs"
 	"k8s.io/kubernetes/cmd/cloud-controller-manager/app"
 
-	_ "github.com/dlisin/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
-	_ "k8s.io/kubernetes/pkg/client/metrics/prometheus" // for client metric registration
-	_ "k8s.io/kubernetes/pkg/version/prometheus"        // for version metric registration
+	_ "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
+	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 	command := app.NewCloudControllerManagerCommand()
 	command.Use = "yandex-cloud-controller-manager"
 
-	pflag.CommandLine.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
+	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	goflag.CommandLine.Parse([]string{})
 

@@ -4,7 +4,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || true)
 GIT_TREE_STATE ?= $(shell if git_status=$$(git status --porcelain 2>/dev/null) && test -z "$$git_status"; then echo clean; else echo dirty; fi)
 
 DOCKER_TAG ?= dev
-DOCKER_IMG ?= dlisin/yandex-cloud-controller-manager:${DOCKER_TAG}
+DOCKER_IMG ?= flant/yandex-cloud-controller-manager:${DOCKER_TAG}
 
 all: test
 
@@ -24,7 +24,7 @@ test: build
 	go test -v -cover -coverprofile=coverage.out -covermode=atomic $(shell go list ./... | grep -v vendor)
 .PHONY: test
 
-build: gofmt goimports golint govet
+build: dep golint govet
 	go build ./cmd/yandex-cloud-controller-manager
 .PHONY: build
 
@@ -37,15 +37,15 @@ govet:
 .PHONY: govet
 
 golint: $(GOPATH)/bin/golint
-	golint $(shell go list ./... | grep -v vendor)
+	golint ./...
 .PHONY: golint
 
 goimports: $(GOPATH)/bin/goimports
 	goimports -w $(shell go list -f {{.Dir}} ./... | grep -v vendor)
 .PHONY: goimports
 
-dep: $(GOPATH)/bin/dep
-	dep ensure -v
+dep:
+	go get -d -v ./...
 .PHONY: dep
 
 $(GOPATH)/bin/goimports:

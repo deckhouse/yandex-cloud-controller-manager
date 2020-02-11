@@ -41,7 +41,7 @@ spec:
         - key: "CriticalAddonsOnly"
           operator: "Exists"
       containers:
-        - image: dlisin/yandex-cloud-controller-manager:v0.1.0
+        - image: flant/yandex-cloud-controller-manager:v0.7.0
           name: yandex-cloud-controller-manager
           command:
             - /bin/yandex-cloud-controller-manager
@@ -52,13 +52,19 @@ spec:
               cpu: 100m
               memory: 50Mi
           env:
-            - name: YANDEX_CLOUD_ACCESS_TOKEN
+            - name: YANDEX_CLOUD_SERVICE_ACCOUNT_JSON
               valueFrom:
                 secretKeyRef:
                   name: yandex-cloud
-                  key: access-token
+                  key: service-acount-json
             - name: YANDEX_CLOUD_FOLDER_ID
               valueFrom:
                 secretKeyRef:
                   name: yandex-cloud
                   key: folder-id
+            - name: YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID
+              value: <ID>
+            - name: YANDEX_CLOUD_INTERNAL_NETWORK_IDS
+              value: <COMMA_SEPARATED_INTERNAL_NETWORK_IDS>
+            - name: YANDEX_CLOUD_EXTERNAL_NETWORK_IDS
+              value: <COMMA_SEPARATED_EXTERNAL_NETWORK_IDS>
