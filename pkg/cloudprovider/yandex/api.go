@@ -236,6 +236,9 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 	if err != nil {
 		return "", err
 	}
+	if tg == nil {
+		return "", fmt.Errorf("TG by name %q does not yet exist", tgName)
+	}
 
 	tgUpdateRequest := &loadbalancer.UpdateTargetGroupRequest{
 		TargetGroupId: tg.Id,
@@ -259,7 +262,6 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 
 // TODO: Think about removing TG after all LBs are gone
 func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
-	// trying to get TG with the same name as LB
 	tg, err := api.GetTgByName(ctx, name)
 	if err != nil {
 		return err

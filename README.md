@@ -11,9 +11,9 @@ Read more about Kubernetes CCM [here](https://kubernetes.io/docs/tasks/administe
 
 Currently `yandex-cloud-controller-manager` implements:
 * `NodeController` - responsible for updating kubernetes nodes with cloud provider specific labels and addresses and deleting kubernetes nodes that were deleted on your cloud.
+* `ServiceController` - responsible for creating LoadBalancers when a service of `Type: LoadBalancer` is created in Kubernetes.
 
 In the future, it may implement:
-* `ServiceController` - responsible for creating LoadBalancers when a service of `Type: LoadBalancer` is created in Kubernetes.
 * `RouteController` - responsible for creating firewall rules.
 
 
@@ -29,7 +29,7 @@ At the current state of Kubernetes, running Cloud Controller Manager (CCM) requi
 Please read through the requirements carefully as they are critical to running CCM on a Kubernetes cluster on Yandex.Cloud.
 
 #### Version
-Kubernetes 1.11+
+Kubernetes 1.15+
 
 #### Cloud resources
 * All Kubernetes nodes **MUST** be located in the same `Folder`.
@@ -93,16 +93,39 @@ kubectl apply -f manifests/yandex-cloud-controller-manager.yaml
 **NOTE**: the deployments in `manifests` folder are meant to serve as an example.
 They will work in a majority of cases but may not work out of the box for your cluster.
 
+### Subsystem-specific environment variables
+
+#### Node Controller
+
+##### CCM environment variables
+
+* `YANDEX_CLOUD_INTERNAL_NETWORK_IDS` – comma separated list of NetworkIDs. Will be used to select InternalIPs when scanning an Yandex Instance and populating the corresponding Kubernetes Node.
+    * Optional.
+    * By default will select an IP from the first Interface of a Yandex Instance.
+* `YANDEX_CLOUD_EXTERNAL_NETWORK_IDS` – comma separated list of NetworkIDs. Will be used to select ExternalIPs when scanning an Yandex Instance and populating the corresponding Kubernetes Node.
+    * Optional.
+
+#### Service Controller
+
+##### CCM environment variables
+
+* `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` – default NetworkID to use the TargetGroup for created NetworkLoadBalancers.
+    * Mandatory.
+
+##### Service annotations
+
+* `yandex.cpi.flant.com/target-group-network-id` – override `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` on a per-service basis.
+* `yandex.cpi.flant.com/listener-subnet-id` – default SubnetID to use for Listeners in created NetworkLoadBalancers.
 
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language.
-Currently, it is developed and tested on **Go 1.11.5**.
+Currently, it is developed and tested on **Go 1.13.6**.
 If you haven't set up a Go development environment yet, please follow [these instructions](https://golang.org/doc/install).
 
 ### Download Source
 ```bash
-$ go get -u github.com/dliin/yandex-cloud-controller-manager
-$ cd $(go env GOPATH)/src/github.com/dliin/yandex-cloud-controller-manager
+$ go get -u github.com/flant/yandex-cloud-controller-manager
+$ cd $(go env GOPATH)/src/github.com/flant/yandex-cloud-controller-manager
 ```
 
 ### Dependency management
