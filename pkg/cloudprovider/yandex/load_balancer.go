@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-vpc-id"
+	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-network-id"
 	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
 )
 
@@ -143,10 +143,13 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		},
 	}
 
-	// TODO: ClusterID
-	tg, err := yc.api.GetTgByName(ctx, yc.config.ClusterName+lbParams.targetGroupNetworkID)
+	tgName := yc.config.ClusterName + lbParams.targetGroupNetworkID
+	tg, err := yc.api.GetTgByName(ctx, tgName)
 	if err != nil {
 		return nil, err
+	}
+	if tg == nil {
+		return nil, fmt.Errorf("TG %q does not exist yet", tgName)
 	}
 
 	lbStatus, err := yc.api.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{
