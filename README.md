@@ -102,11 +102,12 @@ They will work in a majority of cases but may not work out of the box for your c
 
 * `YANDEX_CLOUD_INTERNAL_NETWORK_IDS` – comma separated list of NetworkIDs. Will be used to select InternalIPs when scanning an Yandex Instance and populating the corresponding Kubernetes Node.
     * Optional.
-    * By default will select an IP from the first Interface of a Yandex Instance.
+    * If **present**, we iterate over all Instance's interfaces and select networkID-matching addresses.
+    * If **not present**, we use an IP address from the first interface as an InternalIP.
 * `YANDEX_CLOUD_EXTERNAL_NETWORK_IDS` – comma separated list of NetworkIDs. Will be used to select ExternalIPs when scanning an Yandex Instance and populating the corresponding Kubernetes Node.
     * Optional.
-    * If **present**, we iterate over all Instance's interface and select networkID-matching *private* addresses.
-    * If **not present** we use *public* address from the first matching interface, or none at all.
+    * If **present**, we iterate over all Instance's interfaces and select networkID-matching *private* addresses.
+    * If **not present**, we use *public* address from the first interface that has one-to-one NAT enabled, or none at all.
 
 #### Service Controller
 
