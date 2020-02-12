@@ -105,6 +105,8 @@ They will work in a majority of cases but may not work out of the box for your c
     * By default will select an IP from the first Interface of a Yandex Instance.
 * `YANDEX_CLOUD_EXTERNAL_NETWORK_IDS` – comma separated list of NetworkIDs. Will be used to select ExternalIPs when scanning an Yandex Instance and populating the corresponding Kubernetes Node.
     * Optional.
+    * If **present**, we iterate over all Instance's interface and select networkID-matching *private* addresses.
+    * If **not present** we use *public* address from the first matching interface, or none at all.
 
 #### Service Controller
 
