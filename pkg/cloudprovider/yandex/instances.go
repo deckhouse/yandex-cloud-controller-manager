@@ -3,6 +3,7 @@ package yandex
 import (
 	"context"
 	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
@@ -10,7 +11,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cloud-provider"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
 // NodeAddresses returns the addresses of the node specified by node name.
@@ -99,19 +100,17 @@ func (yc *Cloud) nodeAddresses(ctx context.Context, instance *compute.Instance) 
 
 	var nodeAddresses []v1.NodeAddress
 
-	if len(yc.config.InternalNetworkIDsSet) > 0 {
-		for _, iface := range instance.NetworkInterfaces {
-			networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
-			if err != nil {
-				return nil, err
-			}
+	for _, iface := range instance.NetworkInterfaces {
+		networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
+		if err != nil {
+			return nil, err
+		}
 
-			if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
-			}
-			if _, ok := yc.config.ExternalNetworkIDsSet[networkID]; ok {
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.Address})
-			}
+		if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
+		}
+		if _, ok := yc.config.ExternalNetworkIDsSet[networkID]; ok {
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.Address})
 		}
 	}
 
