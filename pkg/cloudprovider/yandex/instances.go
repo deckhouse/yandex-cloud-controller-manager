@@ -109,23 +109,49 @@ func (yc *Cloud) nodeAddresses(ctx context.Context, instance *compute.Instance) 
 		if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
 			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
 		}
-		if _, ok := yc.config.ExternalNetworkIDsSet[networkID]; ok {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.Address})
+	}
+
+	if len(yc.config.InternalNetworkIDsSet) > 0 {
+		for _, iface := range instance.NetworkInterfaces {
+			networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
+			if err != nil {
+				return nil, err
+			}
+
+			if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
+				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
+			}
+		}
+	} else {
+		networkInterface := instance.NetworkInterfaces[0]
+		if networkInterface.PrimaryV4Address == nil {
+			return nil, fmt.Errorf("could not find primary IPv4 address for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
+		}
+
+		nodeAddresses = []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address}}
+		if networkInterface.PrimaryV4Address.OneToOneNat != nil {
+			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: networkInterface.PrimaryV4Address.OneToOneNat.Address})
 		}
 	}
 
-	if len(nodeAddresses) > 0 {
-		return nodeAddresses, nil
-	}
+	if len(yc.config.ExternalNetworkIDsSet) > 0 {
+		for _, iface := range instance.NetworkInterfaces {
+			networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
+			if err != nil {
+				return nil, err
+			}
 
-	networkInterface := instance.NetworkInterfaces[0]
-	if networkInterface.PrimaryV4Address == nil {
-		return nil, fmt.Errorf("could not find primary IPv4 address for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
-	}
-
-	nodeAddresses = []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address}}
-	if networkInterface.PrimaryV4Address.OneToOneNat != nil {
-		nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: networkInterface.PrimaryV4Address.OneToOneNat.Address})
+			if _, ok := yc.config.ExternalNetworkIDsSet[networkID]; ok {
+				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.Address})
+			}
+		}
+	} else {
+		for _, iface := range instance.NetworkInterfaces {
+			if iface.PrimaryV4Address.OneToOneNat != nil {
+				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: iface.PrimaryV4Address.OneToOneNat.Address})
+				break
+			}
+		}
 	}
 
 	return nodeAddresses, nil
