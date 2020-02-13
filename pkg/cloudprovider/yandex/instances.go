@@ -100,17 +100,6 @@ func (yc *Cloud) nodeAddresses(ctx context.Context, instance *compute.Instance) 
 
 	var nodeAddresses []v1.NodeAddress
 
-	for _, iface := range instance.NetworkInterfaces {
-		networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
-		if err != nil {
-			return nil, err
-		}
-
-		if _, ok := yc.config.InternalNetworkIDsSet[networkID]; ok {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeInternalIP, Address: iface.PrimaryV4Address.Address})
-		}
-	}
-
 	if len(yc.config.InternalNetworkIDsSet) > 0 {
 		for _, iface := range instance.NetworkInterfaces {
 			networkID, err := mapSubnetIdToNetworkID(ctx, yc.api.GetSDK(), iface.SubnetId)
