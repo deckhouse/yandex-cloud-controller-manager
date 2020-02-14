@@ -16,6 +16,7 @@ import (
 const (
 	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-network-id"
 	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
+	listenerAddressIPv4            = "yandex.cpi.flant.com/listener-address-ipv4"
 )
 
 type LoadBalancerService interface {
@@ -103,19 +104,32 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 			Name:       listenerName,
 			Port:       int64(svcPort.Port),
 			Protocol:   kubeToYandexServiceProtoMapping[svcPort.Protocol],
-			Address:    nil,
 			TargetPort: int64(svcPort.NodePort),
 		}
 
 		if lbParams.internal {
+			internalAddressSpec := &loadbalancer.InternalAddressSpec{
+				SubnetId: lbParams.listenerSubnetID,
+			}
+
+			if len(lbParams.listenerAddressIPv4) > 0 {
+				internalAddressSpec.Address = lbParams.listenerAddressIPv4
+				internalAddressSpec.IpVersion = loadbalancer.IpVersion_IPV4
+			}
+
 			listenerSpec.Address = &loadbalancer.ListenerSpec_InternalAddressSpec{
-				InternalAddressSpec: &loadbalancer.InternalAddressSpec{
-					SubnetId: lbParams.listenerSubnetID,
-				},
+				InternalAddressSpec: internalAddressSpec,
 			}
 		} else {
+			externalAddressSpec := &loadbalancer.ExternalAddressSpec{}
+
+			if len(lbParams.listenerAddressIPv4) > 0 {
+				externalAddressSpec.Address = lbParams.listenerAddressIPv4
+				externalAddressSpec.IpVersion = loadbalancer.IpVersion_IPV4
+			}
+
 			listenerSpec.Address = &loadbalancer.ListenerSpec_ExternalAddressSpec{
-				ExternalAddressSpec: &loadbalancer.ExternalAddressSpec{},
+				ExternalAddressSpec: externalAddressSpec,
 			}
 		}
 
@@ -168,6 +182,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 type loadBalancerParameters struct {
 	targetGroupNetworkID string
 	listenerSubnetID     string
+	listenerAddressIPv4  string
 	internal             bool
 }
 
@@ -181,6 +196,10 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.targetGroupNetworkID = value
 	} else if len(yc.config.NetworkID) != 0 {
 		lbParams.targetGroupNetworkID = yc.config.NetworkID
+	}
+
+	if value, ok := svc.ObjectMeta.Annotations[listenerAddressIPv4]; ok {
+		lbParams.listenerAddressIPv4 = value
 	}
 
 	return

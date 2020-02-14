@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -17,10 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
-)
-
-const (
-	apiDefaultPageSize = 100
 )
 
 // CloudAPI is an abstraction over Yandex.Cloud SDK, to allow mocking/unit testing
@@ -191,7 +186,7 @@ func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
 		NetworkLoadBalancerId: lb.Id,
 	}
 
-	fmt.Printf("Deleting LB by ID %q", lb.Id)
+	log.Printf("Deleting LB by ID %q", lb.Id)
 	_, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
 		return api.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 	})
@@ -231,7 +226,7 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 		return result.(*loadbalancer.TargetGroup).Id, nil
 	}
 
-	fmt.Printf("retrieving TargetGroup by name %q", tgName)
+	log.Printf("retrieving TargetGroup by name %q", tgName)
 	tg, err := api.GetTgByName(ctx, tgName)
 	if err != nil {
 		return "", err
@@ -289,8 +284,8 @@ func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
 func (api *YandexCloudAPI) FindInstanceByFolderAndName(ctx context.Context, folderID string, instanceName string) (*compute.Instance, error) {
 	result, err := api.sdk.Compute().Instance().List(ctx, &compute.ListInstancesRequest{
 		FolderId: folderID,
-		Filter:   fmt.Sprintf(`%s = "%s"`, "name", instanceName),
-		PageSize: apiDefaultPageSize,
+		Filter:   fmt.Sprintf("name = \"%s\"", instanceName),
+		PageSize: 2,
 	})
 	if err != nil {
 		return nil, err
@@ -311,7 +306,7 @@ func (api *YandexCloudAPI) getLbByName(ctx context.Context, name string) (*loadb
 	result, err := api.sdk.LoadBalancer().NetworkLoadBalancer().List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
 		FolderId: api.folderID,
 		PageSize: 2,
-		Filter:   "name=" + strconv.Quote(name),
+		Filter:   fmt.Sprintf("name = \"%s\"", name),
 	})
 
 	if err != nil {
@@ -332,7 +327,7 @@ func (api *YandexCloudAPI) GetTgByName(ctx context.Context, name string) (*loadb
 	result, err := api.sdk.LoadBalancer().TargetGroup().List(ctx, &loadbalancer.ListTargetGroupsRequest{
 		FolderId: api.folderID,
 		PageSize: 2,
-		Filter:   "name=" + strconv.Quote(name),
+		Filter:   fmt.Sprintf("name = \"%s\"", name),
 	})
 
 	if err != nil {

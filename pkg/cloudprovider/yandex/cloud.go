@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	mapset "github.com/deckarep/golang-set"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -277,8 +279,10 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 		cloud:         yc,
 		kubeclientset: clientset,
 		nodeLister:    nodeInformer.Lister(),
-		// TODO: reduce max delay
-		workqueue:          workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		workqueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		)),
 		recorder:           recorder,
 		latestVisitedNodes: mapset.NewSet(),
 	}
