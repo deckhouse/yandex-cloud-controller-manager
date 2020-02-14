@@ -126,6 +126,7 @@ Due to API limitations, only one subnet from each zone must be present in each N
 
 * `yandex.cpi.flant.com/target-group-network-id` – override `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` on a per-service basis.
 * `yandex.cpi.flant.com/listener-subnet-id` – default SubnetID to use for Listeners in created NetworkLoadBalancers.
+* `yandex.cpi.flant.com/listener-address-ipv4` – select pre-defined IPv4 address. Works both on internal and external NetworkLoadBalancers.
 
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language.
