@@ -1,4 +1,4 @@
-package yandex_test
+package yapi_test
 
 import (
 	"context"

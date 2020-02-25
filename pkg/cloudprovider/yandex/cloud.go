@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flant/yandex-cloud-controller-manager/pkg/yapi"
+
 	"golang.org/x/time/rate"
 
 	mapset "github.com/deckarep/golang-set"
@@ -26,18 +28,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
-	"k8s.io/klog"
-
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/workqueue"
 
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-
-	"k8s.io/apimachinery/pkg/labels"
-
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	"k8s.io/client-go/informers"
 
@@ -65,9 +59,10 @@ const (
 type CloudConfig struct {
 	ClusterName string
 
-	NetworkID string
-	FolderID  string
-	LocalZone string
+	NetworkID   string
+	FolderID    string
+	LocalRegion string
+	LocalZone   string
 
 	InternalNetworkIDsSet map[string]struct{}
 	ExternalNetworkIDsSet map[string]struct{}
@@ -75,99 +70,9 @@ type CloudConfig struct {
 	Credentials ycsdk.Credentials
 }
 
-type NodeTargetGroupSyncer struct {
-	// TODO: refactor cloud out of here
-	cloud *Cloud
-
-	latestVisitedNodes mapset.Set
-
-	kubeclientset kubernetes.Interface
-	nodeLister    corev1listers.NodeLister
-	nodeSynced    bool
-	workqueue     workqueue.RateLimitingInterface
-	recorder      record.EventRecorder
-}
-
-func (c *NodeTargetGroupSyncer) enqueueNode(obj interface{}) {
-	var (
-		key string
-		err error
-	)
-
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	c.workqueue.Add(key)
-}
-
-func (c *NodeTargetGroupSyncer) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-func (c *NodeTargetGroupSyncer) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-
-		if key, ok = obj.(string); !ok {
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-
-		if err := c.syncHandler(); err != nil {
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-
-		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
-
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-func (c *NodeTargetGroupSyncer) syncHandler() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	nodes, err := c.nodeLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("failed to List node from internal Indexer: %s", err)
-	}
-	if len(nodes) == 0 {
-		log.Println("no Nodes detected, cannot sync")
-		return nil
-	}
-
-	err = c.cloud.SynchronizeNodesWithTargetGroups(ctx, nodes)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // Cloud is an implementation of cloudprovider.Interface for Yandex.Cloud
 type Cloud struct {
-	api                   CloudAPI
+	api                   *yapi.YandexCloudAPI
 	nodeTargetGroupSyncer *NodeTargetGroupSyncer
 	config                CloudConfig
 }
@@ -181,7 +86,7 @@ func init() {
 				return nil, err
 			}
 
-			api, err := NewYandexCloudAPI(config)
+			api, err := yapi.NewYandexCloudAPI(config.Credentials, config.LocalRegion, config.FolderID)
 			if err != nil {
 				return nil, err
 			}
@@ -251,12 +156,16 @@ func NewCloudConfig() (*CloudConfig, error) {
 		return nil, errors.Wrap(err, "cannot get Zone from instance metadata")
 	}
 	cloudConfig.LocalZone = localZone
+	cloudConfig.LocalRegion, err = GetRegion(localZone)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get region from zone: %s", localZone)
+	}
 
 	return cloudConfig, nil
 }
 
 // NewCloud creates a new instance of Cloud object
-func NewCloud(config CloudConfig, api CloudAPI) *Cloud {
+func NewCloud(config CloudConfig, api *yapi.YandexCloudAPI) *Cloud {
 	return &Cloud{
 		api:    api,
 		config: config,
@@ -338,7 +247,7 @@ func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*
 
 	for networkID, targets := range mapping {
 		// TODO: unique ClusterID
-		_, err := yc.api.CreateOrUpdateTG(ctx, yc.config.ClusterName+networkID, targets)
+		_, err := yc.api.LbSvc.CreateOrUpdateTG(ctx, yc.config.ClusterName+networkID, targets)
 		if err != nil {
 			return err
 		}
