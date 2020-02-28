@@ -1,4 +1,4 @@
-package yandex
+package yapi
 
 import (
 	"context"
@@ -6,62 +6,29 @@ import (
 	"log"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
+
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-	ycsdkoperation "github.com/yandex-cloud/go-sdk/operation"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 )
 
-// CloudAPI is an abstraction over Yandex.Cloud SDK, to allow mocking/unit testing
-type CloudAPI interface {
-	// FindInstanceByFolderAndName searches for Instance with the specified folderID and instanceName.
-	// If nothing found - no error must be returned.
-	FindInstanceByFolderAndName(ctx context.Context, folderID string, instanceName string) (*compute.Instance, error)
-
-	LoadBalancerService
-
-	RawAPI
+type YandexLoadBalancerService struct {
+	sdk      *ycsdk.SDK
+	cloudCtx CloudContext
 }
 
-type RawAPI interface {
-	GetSDK() *ycsdk.SDK
-}
-
-// YandexCloudAPI is an implementation of CloudAPI
-type YandexCloudAPI struct {
-	sdk *ycsdk.SDK
-
-	folderID string
-	regionID string
-}
-
-// NewCloudAPI creates new instance of CloudAPI object
-func NewYandexCloudAPI(config *CloudConfig) (CloudAPI, error) {
-	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: config.Credentials,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Yandex.Cloud SDK: %s", err)
-	}
-
-	return &YandexCloudAPI{
+func NewYandexLoadBalancerService(sdk *ycsdk.SDK, cloudCtx CloudContext) *YandexLoadBalancerService {
+	return &YandexLoadBalancerService{
 		sdk:      sdk,
-		folderID: config.FolderID,
-		regionID: "ru-central1",
-	}, nil
+		cloudCtx: cloudCtx,
+	}
 }
 
-func (api *YandexCloudAPI) GetSDK() *ycsdk.SDK {
-	return api.sdk
-}
-
-func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (*v1.LoadBalancerStatus, error) {
+func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, name string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (*v1.LoadBalancerStatus, error) {
 	var nlbType = loadbalancer.NetworkLoadBalancer_EXTERNAL
 	for _, listener := range listenerSpec {
 		if _, ok := listener.Address.(*loadbalancer.ListenerSpec_InternalAddressSpec); ok {
@@ -71,16 +38,16 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 	}
 
 	lbCreateRequest := &loadbalancer.CreateNetworkLoadBalancerRequest{
-		FolderId:             api.folderID,
+		FolderId:             ySvc.cloudCtx.FolderID,
 		Name:                 name,
-		RegionId:             api.regionID,
+		RegionId:             ySvc.cloudCtx.FolderID,
 		Type:                 nlbType,
 		ListenerSpecs:        listenerSpec,
 		AttachedTargetGroups: attachedTGs,
 	}
 
 	log.Printf("Getting LB by name: %q", name)
-	lb, err := api.getLbByName(ctx, name)
+	lb, err := ySvc.getLbByName(ctx, name)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			log.Println("LB not found, creating new LB")
@@ -91,8 +58,8 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 
 	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
 		lbDeleteRequest := &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id}
-		_, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
-			return api.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
+		_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+			return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 		})
 		if err != nil {
 			return nil, err
@@ -101,8 +68,8 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 
 	log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
 
-	result, _, err := api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().NetworkLoadBalancer().Create(ctx, lbCreateRequest)
+	result, _, err := waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Create(ctx, lbCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
@@ -119,7 +86,7 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 		}}, nil
 	}
 
-	lb, err = api.getLbByName(ctx, name)
+	lb, err = ySvc.getLbByName(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +102,8 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 
 	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
 
-	result, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().NetworkLoadBalancer().Update(ctx, lbUpdateRequest)
+	result, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Update(ctx, lbUpdateRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -150,9 +117,9 @@ func (api *YandexCloudAPI) CreateOrUpdateLB(ctx context.Context, name string, li
 	}}, nil
 }
 
-func (api *YandexCloudAPI) GetLbByName(ctx context.Context, name string) (*v1.LoadBalancerStatus, bool, error) {
+func (ySvc *YandexLoadBalancerService) GetLbByName(ctx context.Context, name string) (*v1.LoadBalancerStatus, bool, error) {
 	log.Printf("Retrieving LB by name %q", name)
-	lb, err := api.getLbByName(ctx, name)
+	lb, err := ySvc.getLbByName(ctx, name)
 	if err != nil {
 		return &v1.LoadBalancerStatus{}, false, err
 	}
@@ -171,9 +138,9 @@ func (api *YandexCloudAPI) GetLbByName(ctx context.Context, name string) (*v1.Lo
 	return &v1.LoadBalancerStatus{Ingress: lbIngresses}, true, nil
 }
 
-func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
+func (ySvc *YandexLoadBalancerService) RemoveLB(ctx context.Context, name string) error {
 	log.Printf("Retrieving LB by name %q", name)
-	lb, err := api.getLbByName(ctx, name)
+	lb, err := ySvc.getLbByName(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -187,8 +154,8 @@ func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
 	}
 
 	log.Printf("Deleting LB by ID %q", lb.Id)
-	_, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
+	_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -201,18 +168,18 @@ func (api *YandexCloudAPI) RemoveLB(ctx context.Context, name string) error {
 	return nil
 }
 
-func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
+func (ySvc *YandexLoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
 	tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
-		FolderId: api.folderID,
+		FolderId: ySvc.cloudCtx.FolderID,
 		Name:     tgName,
-		RegionId: api.regionID,
+		RegionId: ySvc.cloudCtx.RegionID,
 		Targets:  targets,
 	}
 
 	log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
 
-	result, _, err := api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().TargetGroup().Create(ctx, tgCreateRequest)
+	result, _, err := waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Create(ctx, tgCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
@@ -227,7 +194,7 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 	}
 
 	log.Printf("retrieving TargetGroup by name %q", tgName)
-	tg, err := api.GetTgByName(ctx, tgName)
+	tg, err := ySvc.GetTgByName(ctx, tgName)
 	if err != nil {
 		return "", err
 	}
@@ -245,8 +212,8 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 
 	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
 
-	result, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().TargetGroup().Update(ctx, tgUpdateRequest)
+	result, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Update(ctx, tgUpdateRequest)
 	})
 	if err != nil {
 		return "", err
@@ -256,8 +223,8 @@ func (api *YandexCloudAPI) CreateOrUpdateTG(ctx context.Context, tgName string, 
 }
 
 // TODO: Think about removing TG after all LBs are gone
-func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
-	tg, err := api.GetTgByName(ctx, name)
+func (ySvc *YandexLoadBalancerService) RemoveTG(ctx context.Context, name string) error {
+	tg, err := ySvc.GetTgByName(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -266,8 +233,8 @@ func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
 		TargetGroupId: tg.Id,
 	}
 
-	_, _, err = api.waitForResult(ctx, func() (*operation.Operation, error) {
-		return api.sdk.LoadBalancer().TargetGroup().Delete(ctx, tgDeleteRequest)
+	_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Delete(ctx, tgDeleteRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -280,31 +247,9 @@ func (api *YandexCloudAPI) RemoveTG(ctx context.Context, name string) error {
 	return nil
 }
 
-// FindInstanceByFolderAndName searches for Instance with the specified folderID and instanceName.
-func (api *YandexCloudAPI) FindInstanceByFolderAndName(ctx context.Context, folderID string, instanceName string) (*compute.Instance, error) {
-	result, err := api.sdk.Compute().Instance().List(ctx, &compute.ListInstancesRequest{
-		FolderId: folderID,
-		Filter:   fmt.Sprintf("name = \"%s\"", instanceName),
-		PageSize: 2,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Instances == nil || len(result.Instances) == 0 {
-		return nil, nil
-	}
-
-	if len(result.Instances) > 1 {
-		return nil, fmt.Errorf("multiple instances found: folderID=%s, instanceName=%s", folderID, instanceName)
-	}
-
-	return result.Instances[0], nil
-}
-
-func (api *YandexCloudAPI) getLbByName(ctx context.Context, name string) (*loadbalancer.NetworkLoadBalancer, error) {
-	result, err := api.sdk.LoadBalancer().NetworkLoadBalancer().List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
-		FolderId: api.folderID,
+func (ySvc *YandexLoadBalancerService) getLbByName(ctx context.Context, name string) (*loadbalancer.NetworkLoadBalancer, error) {
+	result, err := ySvc.sdk.LoadBalancer().NetworkLoadBalancer().List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
+		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
 		Filter:   fmt.Sprintf("name = \"%s\"", name),
 	})
@@ -323,9 +268,9 @@ func (api *YandexCloudAPI) getLbByName(ctx context.Context, name string) (*loadb
 	return result.NetworkLoadBalancers[0], nil
 }
 
-func (api *YandexCloudAPI) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
-	result, err := api.sdk.LoadBalancer().TargetGroup().List(ctx, &loadbalancer.ListTargetGroupsRequest{
-		FolderId: api.folderID,
+func (ySvc *YandexLoadBalancerService) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
+	result, err := ySvc.sdk.LoadBalancer().TargetGroup().List(ctx, &loadbalancer.ListTargetGroupsRequest{
+		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
 		Filter:   fmt.Sprintf("name = \"%s\"", name),
 	})
@@ -342,25 +287,6 @@ func (api *YandexCloudAPI) GetTgByName(ctx context.Context, name string) (*loadb
 	}
 
 	return result.TargetGroups[0], nil
-}
-
-func (api *YandexCloudAPI) waitForResult(ctx context.Context, origFunc func() (*operation.Operation, error)) (proto.Message, *ycsdkoperation.Operation, error) {
-	op, err := api.sdk.WrapOperation(origFunc())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	err = op.Wait(ctx)
-	if err != nil {
-		return nil, op, err
-	}
-
-	resp, err := op.Response()
-	if err != nil {
-		return nil, op, err
-	}
-
-	return resp, op, nil
 }
 
 func shouldRecreate(oldBalancer *loadbalancer.NetworkLoadBalancer, newBalancerSpec *loadbalancer.CreateNetworkLoadBalancerRequest) bool {
