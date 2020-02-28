@@ -141,13 +141,18 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 
 	cloudConfig.InternalNetworkIDsSet = make(map[string]struct{})
-	for _, networkID := range strings.Split(os.Getenv(envInternalNetworkIDs), ",") {
-		cloudConfig.InternalNetworkIDsSet[networkID] = struct{}{}
+	cloudConfig.ExternalNetworkIDsSet = make(map[string]struct{})
+
+	if len(os.Getenv(envInternalNetworkIDs)) > 0 {
+		for _, networkID := range strings.Split(os.Getenv(envInternalNetworkIDs), ",") {
+			cloudConfig.InternalNetworkIDsSet[networkID] = struct{}{}
+		}
 	}
 
-	cloudConfig.ExternalNetworkIDsSet = make(map[string]struct{})
-	for _, networkID := range strings.Split(os.Getenv(envExternalNetworkIDs), ",") {
-		cloudConfig.ExternalNetworkIDsSet[networkID] = struct{}{}
+	if len(os.Getenv(envExternalNetworkIDs)) > 0 {
+		for _, networkID := range strings.Split(os.Getenv(envExternalNetworkIDs), ",") {
+			cloudConfig.ExternalNetworkIDsSet[networkID] = struct{}{}
+		}
 	}
 
 	// Retrieve LocalZone
