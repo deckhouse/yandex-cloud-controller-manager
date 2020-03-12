@@ -40,7 +40,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, nam
 	lbCreateRequest := &loadbalancer.CreateNetworkLoadBalancerRequest{
 		FolderId:             ySvc.cloudCtx.FolderID,
 		Name:                 name,
-		RegionId:             ySvc.cloudCtx.FolderID,
+		RegionId:             ySvc.cloudCtx.RegionID,
 		Type:                 nlbType,
 		ListenerSpecs:        listenerSpec,
 		AttachedTargetGroups: attachedTGs,
