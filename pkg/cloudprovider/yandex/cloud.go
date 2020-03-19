@@ -50,7 +50,8 @@ const (
 	envClusterName        = "YANDEX_CLUSTER_NAME"
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
-	envNetworkID          = "YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID"
+	envLbListenerSubnetID = "YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID"
+	envLbTgNetworkID      = "YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID"
 	envInternalNetworkIDs = "YANDEX_CLOUD_INTERNAL_NETWORK_IDS"
 	envExternalNetworkIDs = "YANDEX_CLOUD_EXTERNAL_NETWORK_IDS"
 )
@@ -59,10 +60,11 @@ const (
 type CloudConfig struct {
 	ClusterName string
 
-	NetworkID   string
-	FolderID    string
-	LocalRegion string
-	LocalZone   string
+	lbListenerSubnetID string
+	lbTgNetworkID      string
+	FolderID           string
+	LocalRegion        string
+	LocalZone          string
 
 	InternalNetworkIDsSet map[string]struct{}
 	ExternalNetworkIDsSet map[string]struct{}
@@ -135,9 +137,11 @@ func NewCloudConfig() (*CloudConfig, error) {
 		log.Fatalf("%q env is required", envClusterName)
 	}
 
-	cloudConfig.NetworkID = os.Getenv(envNetworkID)
-	if len(cloudConfig.NetworkID) == 0 {
-		log.Fatalf("%q env is required", envNetworkID)
+	cloudConfig.lbListenerSubnetID = os.Getenv(envLbListenerSubnetID)
+
+	cloudConfig.lbTgNetworkID = os.Getenv(envLbTgNetworkID)
+	if len(cloudConfig.lbTgNetworkID) == 0 {
+		log.Fatalf("%q env is required", envLbTgNetworkID)
 	}
 
 	cloudConfig.InternalNetworkIDsSet = make(map[string]struct{})
