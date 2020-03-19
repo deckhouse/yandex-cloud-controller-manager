@@ -15,6 +15,7 @@ import (
 
 const (
 	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-network-id"
+	externalLoadBalancerAnnotation = "yandex.cpi.flant.com/loadbalancer-external"
 	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
 	listenerAddressIPv4            = "yandex.cpi.flant.com/listener-address-ipv4"
 )
@@ -190,12 +191,16 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 	if value, ok := svc.ObjectMeta.Annotations[listenerSubnetIdAnnotation]; ok {
 		lbParams.internal = true
 		lbParams.listenerSubnetID = value
+	} else if len(yc.config.lbListenerSubnetID) != 0 {
+		lbParams.listenerSubnetID = yc.config.lbListenerSubnetID
+		_, isExternal := svc.ObjectMeta.Annotations[externalLoadBalancerAnnotation]
+		lbParams.internal = !isExternal
 	}
 
 	if value, ok := svc.ObjectMeta.Annotations[targetGroupNetworkIdAnnotation]; ok {
 		lbParams.targetGroupNetworkID = value
-	} else if len(yc.config.NetworkID) != 0 {
-		lbParams.targetGroupNetworkID = yc.config.NetworkID
+	} else if len(yc.config.lbTgNetworkID) != 0 {
+		lbParams.targetGroupNetworkID = yc.config.lbTgNetworkID
 	}
 
 	if value, ok := svc.ObjectMeta.Annotations[listenerAddressIPv4]; ok {

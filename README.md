@@ -119,14 +119,17 @@ Due to API limitations, only one subnet from each zone must be present in each N
 
 ##### CCM environment variables
 
-* `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` – default NetworkID to use the TargetGroup for created NetworkLoadBalancers.
+* `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` – default NetworkID to use for TargetGroup for created NetworkLoadBalancers.
     * Mandatory.
+* `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` – default SubnetID to use for created NetworkLoadBalancers' listeners.
+    * **Caution!** All newly created NLBs will be INTERNAL. This can be overriden via `yandex.cpi.flant.com/loadbalancer-external` [Service annotation](#Service-annotations).
 
 ##### Service annotations
 
 * `yandex.cpi.flant.com/target-group-network-id` – override `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` on a per-service basis.
 * `yandex.cpi.flant.com/listener-subnet-id` – default SubnetID to use for Listeners in created NetworkLoadBalancers.
 * `yandex.cpi.flant.com/listener-address-ipv4` – select pre-defined IPv4 address. Works both on internal and external NetworkLoadBalancers.
+* `yandex.cpi.flant.com/loadbalancer-external` – Override `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` per-service.
 
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language.
