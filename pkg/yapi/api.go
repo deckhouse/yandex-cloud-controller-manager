@@ -73,7 +73,7 @@ func (api *YandexCloudAPI) FindInstanceByFolderAndName(ctx context.Context, fold
 	return result.Instances[0], nil
 }
 
-func waitForResult(ctx context.Context, sdk *ycsdk.SDK, origFunc func() (*operation.Operation, error)) (proto.Message, *ycsdkoperation.Operation, error) {
+func WaitForResult(ctx context.Context, sdk *ycsdk.SDK, origFunc func() (*operation.Operation, error)) (proto.Message, *ycsdkoperation.Operation, error) {
 	op, err := sdk.WrapOperation(origFunc())
 	if err != nil {
 		return nil, nil, err

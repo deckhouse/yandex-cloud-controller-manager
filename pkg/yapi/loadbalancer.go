@@ -58,7 +58,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, nam
 
 	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
 		lbDeleteRequest := &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id}
-		_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 			return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 		})
 		if err != nil {
@@ -68,7 +68,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, nam
 
 	log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
 
-	result, _, err := waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	result, _, err := WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Create(ctx, lbCreateRequest)
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, nam
 
 	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
 
-	result, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	result, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Update(ctx, lbUpdateRequest)
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func (ySvc *YandexLoadBalancerService) RemoveLB(ctx context.Context, name string
 	}
 
 	log.Printf("Deleting LB by ID %q", lb.Id)
-	_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 	})
 	if err != nil {
@@ -178,7 +178,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgN
 
 	log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
 
-	result, _, err := waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	result, _, err := WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().TargetGroup().Create(ctx, tgCreateRequest)
 	})
 	if err != nil {
@@ -212,7 +212,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgN
 
 	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
 
-	result, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	result, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().TargetGroup().Update(ctx, tgUpdateRequest)
 	})
 	if err != nil {
@@ -233,7 +233,7 @@ func (ySvc *YandexLoadBalancerService) RemoveTG(ctx context.Context, name string
 		TargetGroupId: tg.Id,
 	}
 
-	_, _, err = waitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+	_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
 		return ySvc.sdk.LoadBalancer().TargetGroup().Delete(ctx, tgDeleteRequest)
 	})
 	if err != nil {

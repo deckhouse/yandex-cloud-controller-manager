@@ -48,6 +48,7 @@ const (
 	providerName = "yandex"
 
 	envClusterName        = "YANDEX_CLUSTER_NAME"
+	envRouteTableID       = "YANDEX_CLOUD_ROUTE_TABLE_ID"
 	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
 	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
 	envLbListenerSubnetID = "YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID"
@@ -65,6 +66,7 @@ type CloudConfig struct {
 	FolderID           string
 	LocalRegion        string
 	LocalZone          string
+	RouteTableID       string
 
 	InternalNetworkIDsSet map[string]struct{}
 	ExternalNetworkIDsSet map[string]struct{}
@@ -135,6 +137,11 @@ func NewCloudConfig() (*CloudConfig, error) {
 	cloudConfig.ClusterName = os.Getenv(envClusterName)
 	if len(cloudConfig.ClusterName) == 0 {
 		log.Fatalf("%q env is required", envClusterName)
+	}
+
+	cloudConfig.RouteTableID = os.Getenv(envRouteTableID)
+	if len(cloudConfig.RouteTableID) == 0 {
+		log.Fatalf("%q env is required", envRouteTableID)
 	}
 
 	cloudConfig.lbListenerSubnetID = os.Getenv(envLbListenerSubnetID)
@@ -316,7 +323,7 @@ func (yc *Cloud) Clusters() (cloudprovider.Clusters, bool) {
 
 // Routes returns a routes interface if supported
 func (yc *Cloud) Routes() (cloudprovider.Routes, bool) {
-	return nil, false
+	return yc, true
 }
 
 // ProviderName returns the cloud provider ID.
