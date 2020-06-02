@@ -29,7 +29,7 @@ At the current state of Kubernetes, running Cloud Controller Manager (CCM) requi
 Please read through the requirements carefully as they are critical to running CCM on a Kubernetes cluster on Yandex.Cloud.
 
 #### Version
-Kubernetes 1.15+
+Kubernetes 1.16+
 
 #### Cloud resources
 * All Kubernetes nodes **MUST** be located in the same `Folder`.
