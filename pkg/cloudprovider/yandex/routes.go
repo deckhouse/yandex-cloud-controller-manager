@@ -132,6 +132,11 @@ func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider
 		nodeName: nodeNameToDelete,
 	})
 
+	if len(rt.StaticRoutes) == len(newStaticRoutes) {
+		log.Info("Not deleting any Route")
+		return nil
+	}
+
 	req := &vpc.UpdateRouteTableRequest{
 		RouteTableId: yc.config.RouteTableID,
 		UpdateMask: &field_mask.FieldMask{
