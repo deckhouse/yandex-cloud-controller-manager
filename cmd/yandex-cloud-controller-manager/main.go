@@ -13,8 +13,6 @@ import (
 	"k8s.io/kubernetes/cmd/cloud-controller-manager/app"
 
 	_ "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
-	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
-	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
 )
 
 func main() {
