@@ -184,7 +184,7 @@ func (ySvc *YandexLoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgN
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			log.Printf("TG by name %q already exists, attempting an update\n", tgName)
-		} else if status.Code(err) == codes.FailedPrecondition && strings.Contains(status.Convert(err).Message(), "One of the targets already a part of the another target group") {
+		} else if status.Code(err) == codes.InvalidArgument && strings.Contains(status.Convert(err).Message(), "One of the targets already a part of the another target group") {
 			log.Printf("TG with the same targets exists already, attempting an update")
 		} else {
 			return "", err
