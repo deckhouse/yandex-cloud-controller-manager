@@ -24,7 +24,7 @@ COPY pkg/    pkg/
 RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags "${LDFLAGS}" -a -o yandex-cloud-controller-manager ./cmd/yandex-cloud-controller-manager
 
 
-FROM alpine:3.8
+FROM alpine:3.11
 
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /go/src/github.com/flant/yandex-cloud-controller-manager/yandex-cloud-controller-manager /bin/
