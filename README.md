@@ -12,9 +12,7 @@ Read more about Kubernetes CCM [here](https://kubernetes.io/docs/tasks/administe
 Currently `yandex-cloud-controller-manager` implements:
 * `NodeController` - responsible for updating kubernetes nodes with cloud provider specific labels and addresses and deleting kubernetes nodes that were deleted on your cloud.
 * `ServiceController` - responsible for creating LoadBalancers when a service of `Type: LoadBalancer` is created in Kubernetes.
-
-In the future, it may implement:
-* `RouteController` - responsible for creating firewall rules.
+* `RouteController` - responsible for creating routes to allow networking between Pods.
 
 
 ## Work In Progress
