@@ -4,8 +4,9 @@ go 1.13
 
 require (
 	github.com/NYTimes/gziphandler v1.0.1 // indirect
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dankinder/httpmock v1.0.0
 	github.com/deckarep/golang-set v1.7.1
 	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
 	github.com/golang/protobuf v1.3.5
@@ -17,15 +18,18 @@ require (
 	github.com/onsi/ginkgo v1.11.0 // indirect
 	github.com/onsi/gomega v1.8.1 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/common v0.4.1
+	github.com/prometheus/common v0.0.0-20181126121408-4724e9255275
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.5.1
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/yandex-cloud/go-genproto v0.0.0-20200514130135-279e4db5b530
 	github.com/yandex-cloud/go-sdk v0.0.0-20200514134153-ba2dba3d5f87
+	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20200323114720-3f67cca34472
 	google.golang.org/grpc v1.28.0
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	k8s.io/api v0.15.12
 	k8s.io/apimachinery v0.15.12
 	k8s.io/client-go v0.15.12
