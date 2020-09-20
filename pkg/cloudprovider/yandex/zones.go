@@ -4,25 +4,22 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cloud-provider"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
-// GetZone returns the Zone containing the current zone and locality region for the node we are currently running on.
-func (yc *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
+func (yc *Cloud) GetZone(_ context.Context) (cloudprovider.Zone, error) {
 	return yc.getZone(yc.config.LocalZone)
 }
 
-// GetZoneByProviderID returns the Zone containing the current zone and locality region of the node specified by providerID
 func (yc *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cloudprovider.Zone, error) {
-	_, zone, _, err := ParseProviderID(providerID)
+	instance, err := yc.getInstanceByProviderID(ctx, providerID)
 	if err != nil {
 		return cloudprovider.Zone{}, err
 	}
 
-	return yc.getZone(zone)
+	return yc.getZone(instance.ZoneId)
 }
 
-// GetZoneByNodeName returns the Zone containing the current zone and locality region of the node specified by node name.
 func (yc *Cloud) GetZoneByNodeName(ctx context.Context, nodeName types.NodeName) (cloudprovider.Zone, error) {
 	instance, err := yc.getInstanceByNodeName(ctx, nodeName)
 	if err != nil {
