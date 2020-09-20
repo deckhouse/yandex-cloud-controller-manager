@@ -1,7 +1,6 @@
 package yandex
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,13 +19,7 @@ import (
 
 	"k8s.io/client-go/tools/record"
 
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
-
 	"k8s.io/client-go/kubernetes/scheme"
-
-	"k8s.io/apimachinery/pkg/types"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -76,7 +69,7 @@ type CloudConfig struct {
 
 // Cloud is an implementation of cloudprovider.Interface for Yandex.Cloud
 type Cloud struct {
-	api                   *yapi.YandexCloudAPI
+	yandexService         *yapi.YandexCloudAPI
 	nodeTargetGroupSyncer *NodeTargetGroupSyncer
 	config                CloudConfig
 }
@@ -167,10 +160,7 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 
 	// Retrieve LocalZone
-	localZone, err := metadata.GetZone()
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot get Zone from instance metadata")
-	}
+	localZone := "ru-central1-b"
 	cloudConfig.LocalZone = localZone
 	cloudConfig.LocalRegion, err = GetRegion(localZone)
 	if err != nil {
@@ -183,8 +173,8 @@ func NewCloudConfig() (*CloudConfig, error) {
 // NewCloud creates a new instance of Cloud object
 func NewCloud(config CloudConfig, api *yapi.YandexCloudAPI) *Cloud {
 	return &Cloud{
-		api:    api,
-		config: config,
+		yandexService: api,
+		config:        config,
 	}
 }
 
@@ -194,6 +184,7 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
 	nodeInformer := informerFactory.Core().V1().Nodes()
+	serviceInformer := informerFactory.Core().V1().Services()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(log.Printf)
@@ -204,6 +195,7 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 		cloud:         yc,
 		kubeclientset: clientset,
 		nodeLister:    nodeInformer.Lister(),
+		serviceLister: serviceInformer.Lister(),
 		workqueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
 			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
@@ -214,7 +206,6 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    yc.nodeTargetGroupSyncer.enqueueNode,
-		UpdateFunc: func(oldObj, newObj interface{}) { return },
 		DeleteFunc: yc.nodeTargetGroupSyncer.enqueueNode,
 	})
 
@@ -225,80 +216,6 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	}
 
 	go wait.Until(yc.nodeTargetGroupSyncer.runWorker, time.Second, stop)
-}
-
-type networkIdToTargetMap map[string][]*loadbalancer.Target
-
-func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
-	for _, node := range nodes {
-		ret = append(ret, node.Name)
-	}
-
-	return
-}
-
-func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
-	newSet := mapset.NewSetFromSlice(fromNodeToInterfaceSlice(nodes))
-	if yc.nodeTargetGroupSyncer.latestVisitedNodes.Equal(newSet) {
-		return nil
-	}
-
-	// TODO: speed up using goroutines?
-	var instances []*compute.Instance
-	for _, node := range nodes {
-		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
-		log.Printf("Finding Instance by Folder %q and Name %q", yc.config.FolderID, nodeName)
-		instance, err := yc.api.FindInstanceByFolderAndName(ctx, yc.config.FolderID, nodeName)
-		if err != nil {
-			return fmt.Errorf("failed to find Instance by its name: %s", err)
-		}
-
-		instances = append(instances, instance)
-	}
-
-	mapping, err := yc.constructNetworkIdToTargetMap(ctx, instances)
-	if err != nil {
-		return fmt.Errorf("failed to construct NetworkIdToTargetMap: %s", err)
-	}
-
-	for networkID, targets := range mapping {
-		// TODO: unique ClusterID
-		_, err := yc.api.LbSvc.CreateOrUpdateTG(ctx, yc.config.ClusterName+networkID, targets)
-		if err != nil {
-			return err
-		}
-	}
-
-	yc.nodeTargetGroupSyncer.latestVisitedNodes = newSet
-
-	return nil
-}
-
-func (yc *Cloud) constructNetworkIdToTargetMap(ctx context.Context, instances []*compute.Instance) (networkIdToTargetMap, error) {
-	sdk := yc.api.GetSDK()
-
-	mapping := make(networkIdToTargetMap)
-
-	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
-	for _, instance := range instances {
-		for _, iface := range instance.NetworkInterfaces {
-			subnetInfo, err := sdk.VPC().Subnet().Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-
-			mapping[subnetInfo.NetworkId] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
-				SubnetId: iface.SubnetId,
-				Address:  iface.PrimaryV4Address.Address,
-			})
-		}
-	}
-
-	if len(mapping) == 0 {
-		return nil, errors.New("no mappings found")
-	}
-
-	return mapping, nil
 }
 
 // LoadBalancer returns a balancer interface if supported.

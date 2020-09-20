@@ -8,7 +8,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	"github.com/flant/yandex-cloud-controller-manager/pkg/yapi"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +29,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 		RouteTableId: yc.config.RouteTableID,
 	}
 
-	routeTable, err := yc.api.GetSDK().VPC().RouteTable().Get(ctx, req)
+	routeTable, err := yc.yandexService.VPCSvc.RouteTableSvc.Get(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +68,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 				StaticRoutes: filteredStaticRoutes,
 			}
 
-			_, _, err := yapi.WaitForResult(ctx, yc.api.GetSDK(), func() (*operation.Operation, error) { return yc.api.GetSDK().VPC().RouteTable().Update(ctx, req) })
+			_, _, err := yc.yandexService.OperationWaiter(ctx, func() (*operation.Operation, error) { return yc.yandexService.VPCSvc.RouteTableSvc.Update(ctx, req) })
 			if err != nil {
 				return nil, err
 			}
@@ -88,7 +87,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 func (yc *Cloud) CreateRoute(ctx context.Context, _ string, _ string, route *cloudprovider.Route) error {
 	log.Infof("CreateRoute called with %+v", *route)
 
-	rt, err := yc.api.GetSDK().VPC().RouteTable().Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
+	rt, err := yc.yandexService.VPCSvc.RouteTableSvc.Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
 	if err != nil {
 		return err
 	}
@@ -114,14 +113,14 @@ func (yc *Cloud) CreateRoute(ctx context.Context, _ string, _ string, route *clo
 		StaticRoutes: newStaticRoutes,
 	}
 
-	_, _, err = yapi.WaitForResult(ctx, yc.api.GetSDK(), func() (*operation.Operation, error) { return yc.api.GetSDK().VPC().RouteTable().Update(ctx, req) })
+	_, _, err = yc.yandexService.OperationWaiter(ctx, func() (*operation.Operation, error) { return yc.yandexService.VPCSvc.RouteTableSvc.Update(ctx, req) })
 	return err
 }
 
 func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider.Route) error {
 	log.Infof("DeleteRoute called with %+v", *route)
 
-	rt, err := yc.api.GetSDK().VPC().RouteTable().Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
+	rt, err := yc.yandexService.VPCSvc.RouteTableSvc.Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
 	if err != nil {
 		return err
 	}
@@ -140,7 +139,7 @@ func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider
 		StaticRoutes: newStaticRoutes,
 	}
 
-	_, _, err = yapi.WaitForResult(ctx, yc.api.GetSDK(), func() (*operation.Operation, error) { return yc.api.GetSDK().VPC().RouteTable().Update(ctx, req) })
+	_, _, err = yc.yandexService.OperationWaiter(ctx, func() (*operation.Operation, error) { return yc.yandexService.VPCSvc.RouteTableSvc.Update(ctx, req) })
 	return err
 }
 
