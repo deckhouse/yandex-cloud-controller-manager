@@ -27,7 +27,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20200323114720-3f67cca34472
 	google.golang.org/grpc v1.28.0
-	k8s.io/api v0.17.1
+	k8s.io/api v0.19.2
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v0.17.1
 	k8s.io/cloud-provider v0.17.1
