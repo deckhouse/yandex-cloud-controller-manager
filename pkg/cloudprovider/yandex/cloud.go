@@ -237,6 +237,10 @@ func (yc *Cloud) Clusters() (cloudprovider.Clusters, bool) {
 
 // Routes returns a routes interface if supported
 func (yc *Cloud) Routes() (cloudprovider.Routes, bool) {
+	if len(yc.config.RouteTableID) == 0 {
+		return nil, false
+	}
+
 	return yc, true
 }
 
