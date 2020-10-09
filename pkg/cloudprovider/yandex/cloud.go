@@ -133,9 +133,6 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 
 	cloudConfig.RouteTableID = os.Getenv(envRouteTableID)
-	if len(cloudConfig.RouteTableID) == 0 {
-		log.Fatalf("%q env is required", envRouteTableID)
-	}
 
 	cloudConfig.lbListenerSubnetID = os.Getenv(envLbListenerSubnetID)
 
