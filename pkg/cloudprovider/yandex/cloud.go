@@ -133,9 +133,6 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 
 	cloudConfig.RouteTableID = os.Getenv(envRouteTableID)
-	if len(cloudConfig.RouteTableID) == 0 {
-		log.Fatalf("%q env is required", envRouteTableID)
-	}
 
 	cloudConfig.lbListenerSubnetID = os.Getenv(envLbListenerSubnetID)
 
@@ -240,6 +237,10 @@ func (yc *Cloud) Clusters() (cloudprovider.Clusters, bool) {
 
 // Routes returns a routes interface if supported
 func (yc *Cloud) Routes() (cloudprovider.Routes, bool) {
+	if len(yc.config.RouteTableID) == 0 {
+		return nil, false
+	}
+
 	return yc, true
 }
 
