@@ -9,30 +9,26 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
+	ycsdk "github.com/yandex-cloud/go-sdk"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
 )
 
-type LoadBalancerService struct {
-	cloudCtx *CloudContext
-
-	LbSvc loadbalancer.NetworkLoadBalancerServiceClient
-	TgSvc loadbalancer.TargetGroupServiceClient
+type YandexLoadBalancerService struct {
+	sdk      *ycsdk.SDK
+	cloudCtx CloudContext
 }
 
-func NewLoadBalancerService(lbSvc loadbalancer.NetworkLoadBalancerServiceClient, tgSvc loadbalancer.TargetGroupServiceClient,
-	cloudCtx *CloudContext) *LoadBalancerService {
-
-	return &LoadBalancerService{
+func NewYandexLoadBalancerService(sdk *ycsdk.SDK, cloudCtx CloudContext) *YandexLoadBalancerService {
+	return &YandexLoadBalancerService{
+		sdk:      sdk,
 		cloudCtx: cloudCtx,
-
-		LbSvc: lbSvc,
-		TgSvc: tgSvc,
 	}
 }
 
-func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (string, error) {
+func (ySvc *YandexLoadBalancerService) CreateOrUpdateLB(ctx context.Context, name string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (*v1.LoadBalancerStatus, error) {
 	var nlbType = loadbalancer.NetworkLoadBalancer_EXTERNAL
 	for _, listener := range listenerSpec {
 		if _, ok := listener.Address.(*loadbalancer.ListenerSpec_InternalAddressSpec); ok {
@@ -51,43 +47,48 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 	}
 
 	log.Printf("Getting LB by name: %q", name)
-	lb, err := ySvc.GetLbByName(ctx, name)
+	lb, err := ySvc.getLbByName(ctx, name)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			log.Println("LB not found, creating new LB")
 		} else {
-			return "", err
+			return nil, err
 		}
 	}
 
 	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
 		lbDeleteRequest := &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id}
-		_, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.Delete(ctx, lbDeleteRequest)
+		_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+			return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 		})
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
 
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Create(ctx, lbCreateRequest)
+	result, _, err := WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Create(ctx, lbCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
 			log.Printf("LB %q already exists, attempting an update\n", name)
 		} else {
-			return "", err
+			return nil, err
 		}
 	} else {
-		return result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address, nil
+		return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+			{
+				// FIXME: only one?
+				IP: result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address,
+			},
+		}}, nil
 	}
 
-	lb, err = ySvc.GetLbByName(ctx, name)
+	lb, err = ySvc.getLbByName(ctx, name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	lbUpdateRequest := &loadbalancer.UpdateNetworkLoadBalancerRequest{
@@ -101,38 +102,45 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
 
-	result, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Update(ctx, lbUpdateRequest)
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address, nil
-}
-
-func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, clusterName string) (ret []*loadbalancer.TargetGroup, err error) {
-	result, err := ySvc.TgSvc.List(ctx, &loadbalancer.ListTargetGroupsRequest{
-		FolderId: ySvc.cloudCtx.FolderID,
-		// FIXME: properly implement iterator
-		PageSize: 1000,
+	result, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Update(ctx, lbUpdateRequest)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	for _, tg := range result.TargetGroups {
-		if strings.HasPrefix(tg.Name, clusterName) {
-			ret = append(ret)
-		}
-	}
-
-	return
+	return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{
+		{
+			// FIXME: only one?
+			IP: result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address,
+		},
+	}}, nil
 }
 
-func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string) error {
+func (ySvc *YandexLoadBalancerService) GetLbByName(ctx context.Context, name string) (*v1.LoadBalancerStatus, bool, error) {
 	log.Printf("Retrieving LB by name %q", name)
-	lb, err := ySvc.GetLbByName(ctx, name)
+	lb, err := ySvc.getLbByName(ctx, name)
+	if err != nil {
+		return &v1.LoadBalancerStatus{}, false, err
+	}
+
+	if lb == nil {
+		return &v1.LoadBalancerStatus{}, false, nil
+	}
+
+	var lbIngresses []v1.LoadBalancerIngress
+	for _, listener := range lb.Listeners {
+		lbIngresses = append(lbIngresses, v1.LoadBalancerIngress{
+			IP: fmt.Sprintf("%s://%s:%v", strings.ToLower(loadbalancer.Listener_Protocol_name[int32(listener.Protocol)]), listener.Address, listener.Port),
+		})
+	}
+
+	return &v1.LoadBalancerStatus{Ingress: lbIngresses}, true, nil
+}
+
+func (ySvc *YandexLoadBalancerService) RemoveLB(ctx context.Context, name string) error {
+	log.Printf("Retrieving LB by name %q", name)
+	lb, err := ySvc.getLbByName(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -146,8 +154,8 @@ func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string
 	}
 
 	log.Printf("Deleting LB by ID %q", lb.Id)
-	_, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Delete(ctx, lbDeleteRequest)
+	_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().NetworkLoadBalancer().Delete(ctx, lbDeleteRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -160,7 +168,7 @@ func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string
 	return nil
 }
 
-func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
+func (ySvc *YandexLoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
 	tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		Name:     tgName,
@@ -170,8 +178,8 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 
 	log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
 
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Create(ctx, tgCreateRequest)
+	result, _, err := WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Create(ctx, tgCreateRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.AlreadyExists {
@@ -204,8 +212,8 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 
 	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
 
-	result, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Update(ctx, tgUpdateRequest)
+	result, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Update(ctx, tgUpdateRequest)
 	})
 	if err != nil {
 		return "", err
@@ -214,17 +222,23 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 	return result.(*loadbalancer.TargetGroup).Id, nil
 }
 
-func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) error {
-	tgDeleteRequest := &loadbalancer.DeleteTargetGroupRequest{
-		TargetGroupId: tgId,
+// TODO: Think about removing TG after all LBs are gone
+func (ySvc *YandexLoadBalancerService) RemoveTG(ctx context.Context, name string) error {
+	tg, err := ySvc.GetTgByName(ctx, name)
+	if err != nil {
+		return err
 	}
 
-	_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Delete(ctx, tgDeleteRequest)
+	tgDeleteRequest := &loadbalancer.DeleteTargetGroupRequest{
+		TargetGroupId: tg.Id,
+	}
+
+	_, _, err = WaitForResult(ctx, ySvc.sdk, func() (*operation.Operation, error) {
+		return ySvc.sdk.LoadBalancer().TargetGroup().Delete(ctx, tgDeleteRequest)
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			log.Printf("TG by ID %q does not exist, skipping\n", tgId)
+			log.Printf("TG %q does not exist, skipping\n", name)
 		} else {
 			return err
 		}
@@ -233,8 +247,8 @@ func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) 
 	return nil
 }
 
-func (ySvc *LoadBalancerService) GetLbByName(ctx context.Context, name string) (*loadbalancer.NetworkLoadBalancer, error) {
-	result, err := ySvc.LbSvc.List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
+func (ySvc *YandexLoadBalancerService) getLbByName(ctx context.Context, name string) (*loadbalancer.NetworkLoadBalancer, error) {
+	result, err := ySvc.sdk.LoadBalancer().NetworkLoadBalancer().List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
 		Filter:   fmt.Sprintf("name = \"%s\"", name),
@@ -248,14 +262,14 @@ func (ySvc *LoadBalancerService) GetLbByName(ctx context.Context, name string) (
 		return nil, fmt.Errorf("more than 1 LoadBalancers found by the name %q", name)
 	}
 	if len(result.NetworkLoadBalancers) == 0 {
-		return nil, fmt.Errorf("no than 1 LoadBalancers found by the name %q", name)
+		return nil, nil
 	}
 
 	return result.NetworkLoadBalancers[0], nil
 }
 
-func (ySvc *LoadBalancerService) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
-	result, err := ySvc.TgSvc.List(ctx, &loadbalancer.ListTargetGroupsRequest{
+func (ySvc *YandexLoadBalancerService) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
+	result, err := ySvc.sdk.LoadBalancer().TargetGroup().List(ctx, &loadbalancer.ListTargetGroupsRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
 		Filter:   fmt.Sprintf("name = \"%s\"", name),
@@ -269,7 +283,7 @@ func (ySvc *LoadBalancerService) GetTgByName(ctx context.Context, name string) (
 		return nil, fmt.Errorf("more than 1 TargetGroups found by the name %q", name)
 	}
 	if len(result.TargetGroups) == 0 {
-		return nil, fmt.Errorf("no TargetGroups found by the name %q", name)
+		return nil, nil
 	}
 
 	return result.TargetGroups[0], nil

@@ -25,13 +25,13 @@ func main() {
 
 	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	_ = goflag.CommandLine.Parse([]string{})
+	goflag.CommandLine.Parse([]string{})
 
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
 	if err := command.Execute(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }

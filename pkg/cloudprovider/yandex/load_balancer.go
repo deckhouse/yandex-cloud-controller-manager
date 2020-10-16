@@ -20,6 +20,23 @@ const (
 	listenerAddressIPv4            = "yandex.cpi.flant.com/listener-address-ipv4"
 )
 
+type LoadBalancerService interface {
+	LoadBalancerManager
+	TargetGroupManager
+}
+
+type LoadBalancerManager interface {
+	CreateOrUpdateLB(ctx context.Context, id string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (*v1.LoadBalancerStatus, error)
+	GetLbByName(ctx context.Context, name string) (*v1.LoadBalancerStatus, bool, error)
+	RemoveLB(ctx context.Context, id string) error
+}
+
+type TargetGroupManager interface {
+	CreateOrUpdateTG(ctx context.Context, LbName string, targets []*loadbalancer.Target) (string, error)
+	GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error)
+	RemoveTG(ctx context.Context, name string) error
+}
+
 var kubeToYandexServiceProtoMapping = map[v1.Protocol]loadbalancer.Listener_Protocol{
 	v1.ProtocolTCP: loadbalancer.Listener_TCP,
 	v1.ProtocolUDP: loadbalancer.Listener_UDP,
@@ -28,24 +45,7 @@ var kubeToYandexServiceProtoMapping = map[v1.Protocol]loadbalancer.Listener_Prot
 func (yc *Cloud) GetLoadBalancer(ctx context.Context, _ string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
 	lbName := defaultLoadBalancerName(service)
 
-	log.Printf("Retrieving LB by name %q", lbName)
-	lb, err := yc.yandexService.LbSvc.GetLbByName(ctx, lbName)
-	if err != nil {
-		return &v1.LoadBalancerStatus{}, false, err
-	}
-
-	if lb == nil {
-		return &v1.LoadBalancerStatus{}, false, nil
-	}
-
-	var lbIngresses []v1.LoadBalancerIngress
-	for _, listener := range lb.Listeners {
-		lbIngresses = append(lbIngresses, v1.LoadBalancerIngress{
-			IP: fmt.Sprintf("%s://%s:%v", strings.ToLower(loadbalancer.Listener_Protocol_name[int32(listener.Protocol)]), listener.Address, listener.Port),
-		})
-	}
-
-	return &v1.LoadBalancerStatus{Ingress: lbIngresses}, true, nil
+	return yc.api.LbSvc.GetLbByName(ctx, lbName)
 }
 
 func (yc *Cloud) GetLoadBalancerName(_ context.Context, _ string, service *v1.Service) string {
@@ -64,7 +64,7 @@ func (yc *Cloud) UpdateLoadBalancer(ctx context.Context, _ string, service *v1.S
 func (yc *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, _ string, service *v1.Service) error {
 	lbName := defaultLoadBalancerName(service)
 
-	err := yc.yandexService.LbSvc.RemoveLBByName(ctx, lbName)
+	err := yc.api.LbSvc.RemoveLB(ctx, lbName)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 	}
 
 	tgName := yc.config.ClusterName + lbParams.targetGroupNetworkID
-	tg, err := yc.yandexService.LbSvc.GetTgByName(ctx, tgName)
+	tg, err := yc.api.LbSvc.GetTgByName(ctx, tgName)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		return nil, fmt.Errorf("TG %q does not exist yet", tgName)
 	}
 
-	externalIP, err := yc.yandexService.LbSvc.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{
+	lbStatus, err := yc.api.LbSvc.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{
 		{
 			TargetGroupId: tg.Id,
 			HealthChecks:  healthChecks,
@@ -177,7 +177,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		return nil, err
 	}
 
-	return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: externalIP}}}, nil
+	return lbStatus, nil
 }
 
 type loadBalancerParameters struct {

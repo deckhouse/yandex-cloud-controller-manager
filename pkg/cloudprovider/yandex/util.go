@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	deprecatedRegExpProviderID = regexp.MustCompile(`^` + providerName + `://([^/]+)/([^/]+)/([^/]+)$`)
-	regExpProviderID           = regexp.MustCompile(`^` + providerName + `://([^/]+)/([^/]+)$`)
+	regExpProviderID = regexp.MustCompile(`^` + providerName + `://([^/]+)/([^/]+)/([^/]+)$`)
 )
 
 // GetRegion returns region of the provided zone.
@@ -25,24 +24,20 @@ func GetRegion(zoneName string) (string, error) {
 	return zoneName[:ix], nil
 }
 
+// MapNodeNameToInstanceName maps a k8s Node Name to a Yandex.Cloud Instance Name
+// Currently - this is a simple string cast.
 func MapNodeNameToInstanceName(nodeName types.NodeName) string {
 	return string(nodeName)
 }
 
-func generateInstanceID(zone, instanceID string) string {
-	return fmt.Sprintf("%s://%s/%s", providerName, zone, instanceID)
-}
-
-func ParseProviderID(providerID string) (zone string, instanceName string, instanceNameIsId bool, err error) {
-	deprecatedMatches := deprecatedRegExpProviderID.FindStringSubmatch(providerID)
-	if len(deprecatedMatches) == 4 {
-		return deprecatedMatches[2], deprecatedMatches[3], false, nil
-	}
-
+// ParseProviderID splits a providerID into Folder ID, Zone and Instance Name.
+func ParseProviderID(providerID string) (folderID string, zone string, instanceName string, err error) {
+	// providerID is in the following form "${providerName}://${folderID}/${zone}/${instanceName}"
+	// So for input "yandex://b1g4c2a3g6vkffp3qacq/ru-central1-a/e2e-test-node0" output will be  "b1g4c2a3g6vkffp3qacq", "ru-central1-a", "e2e-test-node0".
 	matches := regExpProviderID.FindStringSubmatch(providerID)
-	if len(matches) == 3 {
-		return matches[1], matches[2], true, nil
+	if len(matches) != 4 {
+		return "", "", "", fmt.Errorf("unexpected input: %s", providerID)
 	}
 
-	return "", "", false, fmt.Errorf("can't parse providerID %q", providerID)
+	return matches[1], matches[2], matches[3], nil
 }
