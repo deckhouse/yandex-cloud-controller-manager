@@ -30,7 +30,7 @@ require (
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v0.17.1
-	k8s.io/cloud-provider v0.17.1
+	k8s.io/cloud-provider v0.19.3
 	k8s.io/component-base v0.17.1
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.17.1
