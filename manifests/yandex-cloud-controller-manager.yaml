@@ -56,7 +56,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: yandex-cloud
-                  key: service-acount-json
+                  key: service-account-json
             - name: YANDEX_CLOUD_FOLDER_ID
               valueFrom:
                 secretKeyRef:
