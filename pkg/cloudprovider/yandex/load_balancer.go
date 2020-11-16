@@ -10,7 +10,6 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 	v1 "k8s.io/api/core/v1"
 	svchelpers "k8s.io/cloud-provider/service/helpers"
-	"k8s.io/kubernetes/pkg/master/ports"
 )
 
 const (
@@ -18,6 +17,13 @@ const (
 	externalLoadBalancerAnnotation = "yandex.cpi.flant.com/loadbalancer-external"
 	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
 	listenerAddressIPv4            = "yandex.cpi.flant.com/listener-address-ipv4"
+
+	nodesHealthCheckPath = "/healthz"
+	// NOTE: Please keep the following port in sync with ProxyHealthzPort in pkg/cluster/ports/ports.go
+	// ports.ProxyHealthzPort was not used here to avoid dependencies to k8s.io/kubernetes
+	// cloud provider which is required as part of the out-of-tree cloud provider efforts.
+	// TODO: use a shared constant once ports in pkg/cluster/ports are in a common external repo.
+	lbNodesHealthCheckPort = 10256
 )
 
 var kubeToYandexServiceProtoMapping = map[v1.Protocol]loadbalancer.Listener_Protocol{
@@ -52,23 +58,33 @@ func (yc *Cloud) GetLoadBalancerName(_ context.Context, _ string, service *v1.Se
 }
 
 func (yc *Cloud) EnsureLoadBalancer(ctx context.Context, _ string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
+	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, nodes)
+	if err != nil {
+		return nil, err
+	}
+
 	return yc.ensureLB(ctx, service, nodes)
 }
 
 func (yc *Cloud) UpdateLoadBalancer(ctx context.Context, _ string, service *v1.Service, nodes []*v1.Node) error {
-	_, err := yc.ensureLB(ctx, service, nodes)
+	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, nodes)
+	if err != nil {
+		return err
+	}
+
+	_, err = yc.ensureLB(ctx, service, nodes)
 	return err
 }
 
 func (yc *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, _ string, service *v1.Service) error {
 	lbName := defaultLoadBalancerName(service)
 
-	err := yc.yandexService.LbSvc.RemoveLBByName(ctx, lbName)
+	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, []*v1.Node{})
 	if err != nil {
 		return err
 	}
 
-	return err
+	return yc.yandexService.LbSvc.RemoveLBByName(ctx, lbName)
 }
 
 func defaultLoadBalancerName(service *v1.Service) string {
@@ -136,7 +152,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		listenerSpecs = append(listenerSpecs, listenerSpec)
 	}
 
-	hcPath, hcPort := "/healthz", int32(ports.ProxyHealthzPort)
+	hcPath, hcPort := nodesHealthCheckPath, int32(lbNodesHealthCheckPort)
 	if svchelpers.RequestsOnlyLocalTraffic(service) {
 		// Service requires a special health check, retrieve the OnlyLocal port & path
 		hcPath, hcPort = svchelpers.GetServiceHealthCheckPathPort(service)

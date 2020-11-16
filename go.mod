@@ -1,90 +1,79 @@
 module github.com/flant/yandex-cloud-controller-manager
 
-go 1.13
+go 1.15
 
 require (
 	github.com/NYTimes/gziphandler v1.0.1 // indirect
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d // indirect
-	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/deckarep/golang-set v1.7.1
-	github.com/golang/groupcache v0.0.0-20181024230925-c65c006176ff // indirect
-	github.com/golang/protobuf v1.3.5
-	github.com/googleapis/gnostic v0.2.0 // indirect
+	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.12.1 // indirect
 	github.com/imdario/mergo v0.3.6 // indirect
-	github.com/onsi/ginkgo v1.11.0 // indirect
 	github.com/onsi/gomega v1.8.1 // indirect
-	github.com/pkg/errors v0.8.1
-	github.com/prometheus/common v0.0.0-20181126121408-4724e9255275
+	github.com/pkg/errors v0.9.1
+	github.com/prometheus/common v0.10.0
 	github.com/spf13/pflag v1.0.5
-	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/yandex-cloud/go-genproto v0.0.0-20200514130135-279e4db5b530
 	github.com/yandex-cloud/go-sdk v0.0.0-20200514134153-ba2dba3d5f87
-	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20200323114720-3f67cca34472
+	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013
 	google.golang.org/grpc v1.28.0
-	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
-	k8s.io/api v0.15.12
-	k8s.io/apimachinery v0.15.12
-	k8s.io/client-go v0.15.12
-	k8s.io/cloud-provider v0.15.12
-	k8s.io/component-base v0.15.12
-	k8s.io/klog v1.0.0
-	k8s.io/kubernetes v1.15.12
+	k8s.io/api v0.19.3
+	k8s.io/apimachinery v0.19.3
+	k8s.io/client-go v0.19.3
+	k8s.io/cloud-provider v0.19.3
+	k8s.io/component-base v0.19.3
+	k8s.io/klog/v2 v2.2.0
+	k8s.io/kubernetes v1.19.3
 )
 
-replace go.etcd.io/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200329194405-dd816f0735f8
+replace k8s.io/api => k8s.io/api v0.19.3
 
-replace k8s.io/api => k8s.io/api v0.15.12
+replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.19.3
 
-replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.15.12
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.19.3
 
-replace k8s.io/apimachinery => k8s.io/apimachinery v0.15.12
+replace k8s.io/apiserver => k8s.io/apiserver v0.19.3
 
-replace k8s.io/apiserver => k8s.io/apiserver v0.15.12
+replace k8s.io/cli-runtime => k8s.io/cli-runtime v0.19.3
 
-replace k8s.io/cli-runtime => k8s.io/cli-runtime v0.15.12
+replace k8s.io/client-go => k8s.io/client-go v0.19.3
 
-replace k8s.io/client-go => k8s.io/client-go v0.15.12
+replace k8s.io/cloud-provider => k8s.io/cloud-provider v0.19.3
 
-replace k8s.io/cloud-provider => k8s.io/cloud-provider v0.15.12
+replace k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.19.3
 
-replace k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.15.12
+replace k8s.io/code-generator => k8s.io/code-generator v0.19.3
 
-replace k8s.io/code-generator => k8s.io/code-generator v0.15.12
+replace k8s.io/component-base => k8s.io/component-base v0.19.3
 
-replace k8s.io/component-base => k8s.io/component-base v0.15.12
+replace k8s.io/controller-manager => k8s.io/controller-manager v0.19.3
 
-replace k8s.io/cri-api => k8s.io/cri-api v0.15.12
+replace k8s.io/cri-api => k8s.io/cri-api v0.19.3
 
-replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.15.12
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.3
 
-replace k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.15.12
+replace k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.19.3
 
-replace k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.15.12
+replace k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.19.3
 
-replace k8s.io/kube-proxy => k8s.io/kube-proxy v0.15.12
+replace k8s.io/kube-proxy => k8s.io/kube-proxy v0.19.3
 
-replace k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.15.12
+replace k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.19.3
 
-replace k8s.io/kubectl => k8s.io/kubectl v0.15.12
+replace k8s.io/kubectl => k8s.io/kubectl v0.19.3
 
-replace k8s.io/kubelet => k8s.io/kubelet v0.15.12
+replace k8s.io/kubelet => k8s.io/kubelet v0.19.3
 
-replace k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.15.12
+replace k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.19.3
 
-replace k8s.io/metrics => k8s.io/metrics v0.15.12
+replace k8s.io/metrics => k8s.io/metrics v0.19.3
 
-replace k8s.io/node-api => k8s.io/node-api v0.15.12
+replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.19.3
 
-replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.15.12
+replace k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.19.3
 
-replace k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.15.12
-
-replace k8s.io/sample-controller => k8s.io/sample-controller v0.15.12
+replace k8s.io/sample-controller => k8s.io/sample-controller v0.19.3

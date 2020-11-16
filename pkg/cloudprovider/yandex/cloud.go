@@ -11,20 +11,7 @@ import (
 
 	"github.com/flant/yandex-cloud-controller-manager/pkg/yapi"
 
-	"golang.org/x/time/rate"
-
 	mapset "github.com/deckarep/golang-set"
-
-	"k8s.io/apimachinery/pkg/util/wait"
-
-	"k8s.io/client-go/tools/record"
-
-	"k8s.io/client-go/kubernetes/scheme"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/util/workqueue"
-
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"k8s.io/client-go/informers"
 
@@ -180,39 +167,19 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	clientset := clientBuilder.ClientOrDie("cloud-controller-manager")
 
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
-	nodeInformer := informerFactory.Core().V1().Nodes()
 	serviceInformer := informerFactory.Core().V1().Services()
 
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(log.Printf)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "yandex-cloud-controller-manager"})
-
 	yc.nodeTargetGroupSyncer = &NodeTargetGroupSyncer{
-		cloud:         yc,
-		kubeclientset: clientset,
-		nodeLister:    nodeInformer.Lister(),
-		serviceLister: serviceInformer.Lister(),
-		workqueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		)),
-		recorder:           recorder,
-		latestVisitedNodes: mapset.NewSet(),
+		cloud:            yc,
+		serviceLister:    serviceInformer.Lister(),
+		lastVisitedNodes: mapset.NewSet(),
 	}
 
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    yc.nodeTargetGroupSyncer.enqueueNode,
-		DeleteFunc: yc.nodeTargetGroupSyncer.enqueueNode,
-	})
+	go serviceInformer.Informer().Run(stop)
 
-	go nodeInformer.Informer().Run(stop)
-
-	if !cache.WaitForCacheSync(stop, nodeInformer.Informer().HasSynced) {
+	if !cache.WaitForCacheSync(stop, serviceInformer.Informer().HasSynced) {
 		log.Printf("Timed out waiting for caches to sync")
 	}
-
-	go wait.Until(yc.nodeTargetGroupSyncer.runWorker, time.Second, stop)
 }
 
 // LoadBalancer returns a balancer interface if supported.
@@ -252,4 +219,10 @@ func (yc *Cloud) ProviderName() string {
 // HasClusterID returns true if the cluster has a clusterID
 func (yc *Cloud) HasClusterID() bool {
 	return true
+}
+
+// InstancesV2 returns a InstancesV2 interface if supported
+// TODO (zuzzas): implement once it's stable enough (starting in v0.20.0)
+func (yc *Cloud) InstancesV2() (cloudprovider.InstancesV2, bool) {
+	return nil, false
 }
