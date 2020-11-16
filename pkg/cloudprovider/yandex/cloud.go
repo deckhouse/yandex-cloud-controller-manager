@@ -183,9 +183,13 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	yc.nodeLister = nodeInformer.Lister()
 
 	go serviceInformer.Informer().Run(stop)
+	go nodeInformer.Informer().Run(stop)
 
 	if !cache.WaitForCacheSync(stop, serviceInformer.Informer().HasSynced) {
-		log.Printf("Timed out waiting for caches to sync")
+		log.Fatal("Timed out waiting for caches to sync")
+	}
+	if !cache.WaitForCacheSync(stop, nodeInformer.Informer().HasSynced) {
+		log.Fatal("Timed out waiting for caches to sync")
 	}
 }
 
