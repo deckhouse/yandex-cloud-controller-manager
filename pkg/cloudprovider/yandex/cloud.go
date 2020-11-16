@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/client-go/listers/core/v1"
+
 	"github.com/flant/yandex-cloud-controller-manager/pkg/yapi"
 
 	mapset "github.com/deckarep/golang-set"
@@ -59,6 +61,8 @@ type Cloud struct {
 	yandexService         *yapi.YandexCloudAPI
 	nodeTargetGroupSyncer *NodeTargetGroupSyncer
 	config                CloudConfig
+
+	nodeLister v1.NodeLister
 }
 
 func init() {
@@ -168,12 +172,15 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
 	serviceInformer := informerFactory.Core().V1().Services()
+	nodeInformer := informerFactory.Core().V1().Nodes()
 
 	yc.nodeTargetGroupSyncer = &NodeTargetGroupSyncer{
 		cloud:            yc,
 		serviceLister:    serviceInformer.Lister(),
 		lastVisitedNodes: mapset.NewSet(),
 	}
+
+	yc.nodeLister = nodeInformer.Lister()
 
 	go serviceInformer.Informer().Run(stop)
 
