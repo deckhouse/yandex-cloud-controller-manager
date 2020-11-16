@@ -149,7 +149,7 @@ func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider
 }
 
 func (yc *Cloud) getInternalIpByNodeName(nodeName string) (string, error) {
-	kubeNode, err := yc.nodeTargetGroupSyncer.nodeLister.Get(nodeName)
+	kubeNode, err := yc.nodeLister.Get(nodeName)
 	if err != nil {
 		return "", err
 	}

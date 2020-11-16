@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
+	"sync"
+
+	"k8s.io/klog/v2"
 
 	"golang.org/x/sync/errgroup"
 
@@ -20,106 +22,36 @@ import (
 	mapset "github.com/deckarep/golang-set"
 
 	"k8s.io/apimachinery/pkg/labels"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
 )
 
 type NodeTargetGroupSyncer struct {
 	// TODO: refactor cloud out of here
 	cloud *Cloud
 
-	latestVisitedNodes mapset.Set
+	lastVisitedNodes mapset.Set
+	serviceLister    corev1listers.ServiceLister
 
-	kubeclientset kubernetes.Interface
-	nodeLister    corev1listers.NodeLister
-	serviceLister corev1listers.ServiceLister
-	nodeSynced    bool
-	workqueue     workqueue.RateLimitingInterface
-	recorder      record.EventRecorder
+	tgSyncLock sync.Mutex
 }
 
-func (c *NodeTargetGroupSyncer) enqueueNode(obj interface{}) {
-	var (
-		key string
-		err error
-	)
+func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.Node) error {
+	ntgs.tgSyncLock.Lock()
+	defer ntgs.tgSyncLock.Unlock()
 
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	c.workqueue.Add(key)
-}
-
-func (c *NodeTargetGroupSyncer) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-func (c *NodeTargetGroupSyncer) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-
-		if key, ok = obj.(string); !ok {
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-
-		if err := c.syncHandler(); err != nil {
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-
-		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
-
-		return nil
-	}(obj)
-
+	services, err := ntgs.serviceLister.List(labels.Everything())
 	if err != nil {
-		utilruntime.HandleError(err)
-		return true
+		return fmt.Errorf("failed to list Services from an internal Indexer: %s", err)
 	}
 
-	return true
-}
-
-func (c *NodeTargetGroupSyncer) syncHandler() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	services, err := c.serviceLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("failed to List node from internal Indexer: %s", err)
-	}
 	if len(services) == 0 {
-		return c.cloud.CleanUpTargetGroups(ctx)
+		return ntgs.cleanUpTargetGroups(ctx)
 	}
 
-	nodes, err := c.nodeLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("failed to List node from internal Indexer: %s", err)
-	}
-	if len(nodes) == 0 {
-		log.Println("no Nodes detected, cannot sync")
-		return nil
+	if len(services) == 1 && services[0].ObjectMeta.DeletionTimestamp != nil {
+		return ntgs.cleanUpTargetGroups(ctx)
 	}
 
-	err = c.cloud.SynchronizeNodesWithTargetGroups(ctx, nodes)
+	err = ntgs.synchronizeNodesWithTargetGroups(ctx, nodes)
 	if err != nil {
 		return err
 	}
@@ -137,8 +69,8 @@ func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
 	return
 }
 
-func (yc *Cloud) CleanUpTargetGroups(ctx context.Context) error {
-	tgs, err := yc.yandexService.LbSvc.GetTGsByClusterName(ctx, yc.config.ClusterName)
+func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) error {
+	tgs, err := ntgs.cloud.yandexService.LbSvc.GetTGsByClusterName(ctx, ntgs.cloud.config.ClusterName)
 	if err != nil {
 		return err
 	}
@@ -146,16 +78,21 @@ func (yc *Cloud) CleanUpTargetGroups(ctx context.Context) error {
 	wg, ctx := errgroup.WithContext(ctx)
 	for _, tg := range tgs {
 		wg.Go(func() error {
-			return yc.yandexService.LbSvc.RemoveTGByID(ctx, tg.Id)
+			return ntgs.cloud.yandexService.LbSvc.RemoveTGByID(ctx, tg.Id)
 		})
 	}
 
 	return wg.Wait()
 }
 
-func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
+func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
+	if len(nodes) == 0 {
+		klog.Info("no nodes to synchronize TGs with, skipping...")
+		return nil
+	}
+
 	newSet := mapset.NewSetFromSlice(fromNodeToInterfaceSlice(nodes))
-	if yc.nodeTargetGroupSyncer.latestVisitedNodes.Equal(newSet) {
+	if ntgs.lastVisitedNodes.Equal(newSet) {
 		return nil
 	}
 
@@ -163,8 +100,8 @@ func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*
 	var instances []*compute.Instance
 	for _, node := range nodes {
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
-		log.Printf("Finding Instance by Folder %q and Name %q", yc.config.FolderID, nodeName)
-		instance, err := yc.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
+		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
+		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
 		if err != nil || instance == nil {
 			return fmt.Errorf("failed to find Instance by its name: %s", err)
 		}
@@ -172,30 +109,30 @@ func (yc *Cloud) SynchronizeNodesWithTargetGroups(ctx context.Context, nodes []*
 		instances = append(instances, instance)
 	}
 
-	mapping, err := yc.constructNetworkIdToTargetMap(ctx, instances)
+	mapping, err := ntgs.constructNetworkIdToTargetMap(ctx, instances)
 	if err != nil {
 		return fmt.Errorf("failed to construct NetworkIdToTargetMap: %s", err)
 	}
 
 	for networkID, targets := range mapping {
-		_, err := yc.yandexService.LbSvc.CreateOrUpdateTG(ctx, yc.config.ClusterName+networkID, targets)
+		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, ntgs.cloud.config.ClusterName+networkID, targets)
 		if err != nil {
 			return err
 		}
 	}
 
-	yc.nodeTargetGroupSyncer.latestVisitedNodes = newSet
+	ntgs.lastVisitedNodes = newSet
 
 	return nil
 }
 
-func (yc *Cloud) constructNetworkIdToTargetMap(ctx context.Context, instances []*compute.Instance) (networkIdToTargetMap, error) {
+func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Context, instances []*compute.Instance) (networkIdToTargetMap, error) {
 	mapping := make(networkIdToTargetMap)
 
 	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
 	for _, instance := range instances {
 		for _, iface := range instance.NetworkInterfaces {
-			subnetInfo, err := yc.yandexService.VPCSvc.SubnetSvc.Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
+			subnetInfo, err := ntgs.cloud.yandexService.VPCSvc.SubnetSvc.Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}

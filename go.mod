@@ -25,7 +25,7 @@ require (
 	github.com/yandex-cloud/go-sdk v0.0.0-20200514134153-ba2dba3d5f87
 	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20200323114720-3f67cca34472
 	google.golang.org/grpc v1.28.0
@@ -35,7 +35,8 @@ require (
 	k8s.io/client-go v0.15.12
 	k8s.io/cloud-provider v0.15.12
 	k8s.io/component-base v0.15.12
-	k8s.io/klog v1.0.0
+	k8s.io/klog v1.0.0 // indirect
+	k8s.io/klog/v2 v2.4.0
 	k8s.io/kubernetes v1.15.12
 )
 
