@@ -36,7 +36,7 @@ func ParseProviderID(providerID string) (instanceName string, instanceNameIsId b
 	}
 
 	matches := regExpProviderID.FindStringSubmatch(providerID)
-	if len(matches) == 1 {
+	if len(matches) == 2 {
 		return matches[1], true, nil
 	}
 
