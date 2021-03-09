@@ -49,17 +49,14 @@ const (
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
-	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	pflag.Parse()
-	pflag.VisitAll(func(flag *pflag.Flag) {
-		klog.V(2).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
-	})
-
 	s, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
 	}
+
+	// Dirty hack to avoid using cobra functions
+	// Follow issue https://github.com/kubernetes/cloud-provider/issues/45
+	s.KubeCloudShared.CloudProvider.Name = yandexCloudProviderName
 	c, err := s.Config([]string{}, app.ControllersDisabledByDefault.List())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -92,6 +89,10 @@ func main() {
 
 	controllerInitializers := app.DefaultControllerInitializers(c.Complete(), cloud)
 	command := app.NewCloudControllerManagerCommand(s, c, controllerInitializers)
+
+	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
+	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
+	_ = goflag.CommandLine.Parse([]string{})
 
 	logs.InitLogs()
 	defer logs.FlushLogs()
