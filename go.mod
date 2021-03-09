@@ -13,6 +13,7 @@ require (
 	github.com/onsi/gomega v1.8.1 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.10.0
+	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
 	github.com/yandex-cloud/go-genproto v0.0.0-20200514130135-279e4db5b530
 	github.com/yandex-cloud/go-sdk v0.0.0-20200514134153-ba2dba3d5f87
