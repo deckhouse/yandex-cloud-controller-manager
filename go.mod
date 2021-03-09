@@ -16,7 +16,9 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/yandex-cloud/go-genproto v0.0.0-20200514130135-279e4db5b530
 	github.com/yandex-cloud/go-sdk v0.0.0-20200514134153-ba2dba3d5f87
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/tools v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a
 	google.golang.org/grpc v1.28.0

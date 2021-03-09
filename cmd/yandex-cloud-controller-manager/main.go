@@ -1,3 +1,24 @@
+/*
+Copyright 2020 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// This file should be written by each cloud provider.
+// For an minimal working example, please refer to k8s.io/cloud-provider/sample/basic_main.go
+// For an advanced example, please refer to k8s.io/cloud-provider/sample/advanced_main.go
+// For more details, please refer to k8s.io/kubernetes/cmd/cloud-controller-manager/main.go
+
 package main
 
 import (
@@ -8,29 +29,32 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/options"
 	"k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
-	"k8s.io/klog/v2"
 
 	_ "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
-	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
-	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
+	_ "k8s.io/component-base/metrics/prometheus/clientgo" // load all the prometheus client-go plugins
+	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
+	"k8s.io/klog/v2"
 )
 
 const (
-	// The variables below are samples, please edit the value for your case.
-
-	// sampleCloudProviderName shows an sample of using hard coded parameter for CloudProviderName
-	yandexCloudProviderName = "yandexCloudProvider"
-	// sampleCloudProviderConfigFile shows an sample of using hard coded parameter for CloudProviderConfigFile
+	yandexCloudProviderName       = "yandex"
 	yandexCloudProviderConfigFile = ""
 )
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+
+	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
+	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
+	pflag.Parse()
+	pflag.VisitAll(func(flag *pflag.Flag) {
+		klog.V(2).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
+	})
 
 	s, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
@@ -42,6 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// initialize cloud provider with the cloud provider name and config file provided
 	cloud, err := cloudprovider.InitCloudProvider(yandexCloudProviderName, yandexCloudProviderConfigFile)
 	if err != nil {
 		klog.Fatalf("Cloud provider could not be initialized: %v", err)
@@ -67,17 +92,11 @@ func main() {
 
 	controllerInitializers := app.DefaultControllerInitializers(c.Complete(), cloud)
 	command := app.NewCloudControllerManagerCommand(s, c, controllerInitializers)
-	command.Use = "yandex-cloud-controller-manager"
-
-	pflag.CommandLine.SetNormalizeFunc(flag.WordSepNormalizeFunc)
-	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	_ = goflag.CommandLine.Parse([]string{})
 
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
 	if err := command.Execute(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
