@@ -47,6 +47,8 @@ This means that most pods will be left unschedulable until the CCM is running.
 
 ### Deployment
 
+**Caution**: Yandex.Cloud's documentation refers to **Network** or **VPC** interchangeably. If a **Subnet** ID is required in the configuration, it will be explicitly stated.
+
 #### Authentication and Configuration
 The `yandex-cloud-controller-manager` requires a [Service Account Json]([https://cloud.yandex.com/docs/iam/operations/iam-token/create-for-sa#via-cli]), Folder ID and a Cloud-unique cluster Name stored in the following environment variables:
 * `YANDEX_CLOUD_SERVICE_ACCOUNT_JSON`
