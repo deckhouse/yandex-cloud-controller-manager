@@ -43,11 +43,16 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 		return fmt.Errorf("failed to list Services from an internal Indexer: %s", err)
 	}
 
-	if len(services) == 0 {
-		return ntgs.cleanUpTargetGroups(ctx)
+	var activeLoadBalancerServicesExist bool
+	for _, service := range services {
+		if service.Spec.Type == corev1.ServiceTypeLoadBalancer && service.ObjectMeta.DeletionTimestamp == nil {
+			activeLoadBalancerServicesExist = true
+			break
+		}
 	}
-
-	if len(services) == 1 && services[0].ObjectMeta.DeletionTimestamp != nil {
+	// If no nodes passed seems we are called from the LoadBalancer delete function.
+	// And if no LoadBalancer Services are left in the cluster – we should clean up target groups from the cloud.
+	if len(nodes) == 0 && !activeLoadBalancerServicesExist {
 		return ntgs.cleanUpTargetGroups(ctx)
 	}
 
@@ -82,7 +87,13 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 		})
 	}
 
-	return wg.Wait()
+	if err = wg.Wait(); err != nil {
+		return err
+	}
+
+	ntgs.lastVisitedNodes.Clear()
+
+	return nil
 }
 
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
