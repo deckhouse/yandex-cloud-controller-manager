@@ -60,38 +60,40 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 		}
 	}
 
-	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
-		lbDeleteRequest := &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id}
-		_, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.Delete(ctx, lbDeleteRequest)
+	if lb == nil {
+		log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
+
+		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.Create(ctx, lbCreateRequest)
 		})
 		if err != nil {
 			return "", err
 		}
-	}
 
-	log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
-
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Create(ctx, lbCreateRequest)
-	})
-	if err != nil {
-		if status.Code(err) == codes.AlreadyExists {
-			log.Printf("LB %q already exists, attempting an update\n", name)
-		} else {
-			return "", err
-		}
-	} else {
 		return result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address, nil
 	}
 
-	lb, err = ySvc.GetLbByName(ctx, name)
-	if err != nil {
-		return "", err
+	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
+		log.Printf("Re-creating LoadBalancer: %+v", *lbCreateRequest)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.Delete(ctx, &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id})
+		})
+		if err != nil {
+			return "", err
+		}
+
+		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.Create(ctx, lbCreateRequest)
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address, nil
 	}
-	if lb == nil {
-		return "", fmt.Errorf("LoadBalanacer recreated, but cannot find the new one")
-	}
+
+	log.Printf("LB %q already exists, attempting an update\n", name)
 
 	lbUpdateRequest := &loadbalancer.UpdateNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lb.Id,
@@ -104,7 +106,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
 
-	result, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 		return ySvc.LbSvc.Update(ctx, lbUpdateRequest)
 	})
 	if err != nil {
