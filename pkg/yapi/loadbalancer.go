@@ -128,7 +128,7 @@ func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, cluste
 
 	for _, tg := range result.TargetGroups {
 		if strings.HasPrefix(tg.Name, clusterName) {
-			ret = append(ret)
+			ret = append(ret, tg)
 		}
 	}
 
@@ -223,6 +223,8 @@ func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) 
 	tgDeleteRequest := &loadbalancer.DeleteTargetGroupRequest{
 		TargetGroupId: tgId,
 	}
+
+	log.Printf("Removing TargetGroup: %+v", *tgDeleteRequest)
 
 	_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 		return ySvc.TgSvc.Delete(ctx, tgDeleteRequest)

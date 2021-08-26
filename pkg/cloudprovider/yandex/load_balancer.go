@@ -31,6 +31,7 @@ var kubeToYandexServiceProtoMapping = map[v1.Protocol]loadbalancer.Listener_Prot
 	v1.ProtocolUDP: loadbalancer.Listener_UDP,
 }
 
+// GetLoadBalancer is an implementation of LoadBalancer.GetLoadBalancer
 func (yc *Cloud) GetLoadBalancer(ctx context.Context, _ string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
 	lbName := defaultLoadBalancerName(service)
 
@@ -53,10 +54,12 @@ func (yc *Cloud) GetLoadBalancer(ctx context.Context, _ string, service *v1.Serv
 	return &v1.LoadBalancerStatus{Ingress: lbIngresses}, true, nil
 }
 
+// GetLoadBalancerName is an implementation of LoadBalancer.GetLoadBalancerName.
 func (yc *Cloud) GetLoadBalancerName(_ context.Context, _ string, service *v1.Service) string {
 	return defaultLoadBalancerName(service)
 }
 
+// EnsureLoadBalancer is an implementation of LoadBalancer.EnsureLoadBalancer.
 func (yc *Cloud) EnsureLoadBalancer(ctx context.Context, _ string, service *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, nodes)
 	if err != nil {
@@ -66,6 +69,7 @@ func (yc *Cloud) EnsureLoadBalancer(ctx context.Context, _ string, service *v1.S
 	return yc.ensureLB(ctx, service, nodes)
 }
 
+// UpdateLoadBalancer is an implementation of LoadBalancer.UpdateLoadBalancer.
 func (yc *Cloud) UpdateLoadBalancer(ctx context.Context, _ string, service *v1.Service, nodes []*v1.Node) error {
 	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, nodes)
 	if err != nil {
@@ -76,15 +80,16 @@ func (yc *Cloud) UpdateLoadBalancer(ctx context.Context, _ string, service *v1.S
 	return err
 }
 
+// EnsureLoadBalancerDeleted is an implementation of LoadBalancer.EnsureLoadBalancerDeleted.
 func (yc *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, _ string, service *v1.Service) error {
 	lbName := defaultLoadBalancerName(service)
 
-	err := yc.nodeTargetGroupSyncer.SyncTGs(ctx, []*v1.Node{})
+	err := yc.yandexService.LbSvc.RemoveLBByName(ctx, lbName)
 	if err != nil {
 		return err
 	}
 
-	return yc.yandexService.LbSvc.RemoveLBByName(ctx, lbName)
+	return yc.nodeTargetGroupSyncer.SyncTGs(ctx, []*v1.Node{})
 }
 
 func defaultLoadBalancerName(service *v1.Service) string {
