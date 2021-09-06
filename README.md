@@ -1,8 +1,7 @@
 # Kubernetes Cloud Controller Manager for Yandex.Cloud
-[![Build Status](https://travis-ci.org/flant/yandex-cloud-controller-manager.svg?branch=master)](https://travis-ci.org/flant/yandex-cloud-controller-manager)
-[![Go Report Card](https://goreportcard.com/badge/github.com/flant/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/flant/yandex-cloud-controller-manager)
-[![codecov](https://codecov.io/gh/flant/yandex-cloud-controller-manager/branch/master/graph/badge.svg)](https://codecov.io/gh/flant/yandex-cloud-controller-manager)
-[![Docker Pulls](https://img.shields.io/docker/pulls/flant/yandex-cloud-controller-manager.svg)](https://hub.docker.com/r/flant/yandex-cloud-controller-manager/)
+![Actions Status](https://github.com/deckhouse/yandex-cloud-controller-manager/actions/workflows/ci.yml/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/deckhouse/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/deckhouse/yandex-cloud-controller-manager)
+[![codecov](https://codecov.io/gh/deckhouse/yandex-cloud-controller-manager/branch/master/graph/badge.svg)](https://codecov.io/gh/deckhouse/yandex-cloud-controller-manager)
 
 ## Overview
 `yandex-cloud-controller-manager` is the Kubernetes Cloud Controller Manager (CCM) implementation for Yandex.Cloud.
@@ -138,8 +137,8 @@ If you haven't set up a Go development environment yet, please follow [these ins
 
 ### Download Source
 ```bash
-$ go get -u github.com/flant/yandex-cloud-controller-manager
-$ cd $(go env GOPATH)/src/github.com/flant/yandex-cloud-controller-manager
+$ go get -u github.com/deckhouse/yandex-cloud-controller-manager
+$ cd $(go env GOPATH)/src/github.com/deckhouse/yandex-cloud-controller-manager
 ```
 
 ### Dependency management
