@@ -1,4 +1,4 @@
-module github.com/flant/yandex-cloud-controller-manager
+module github.com/deckhouse/yandex-cloud-controller-manager
 
 go 1.15
 

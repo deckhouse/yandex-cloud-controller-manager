@@ -35,7 +35,7 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 
-	_ "github.com/flant/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
+	_ "github.com/deckhouse/yandex-cloud-controller-manager/pkg/cloudprovider/yandex"
 	_ "k8s.io/component-base/metrics/prometheus/clientgo" // load all the prometheus client-go plugins
 	_ "k8s.io/component-base/metrics/prometheus/version"  // for version metric registration
 	"k8s.io/klog/v2"

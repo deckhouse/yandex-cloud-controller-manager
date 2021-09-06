@@ -11,7 +11,7 @@ import (
 
 	v1 "k8s.io/client-go/listers/core/v1"
 
-	"github.com/flant/yandex-cloud-controller-manager/pkg/yapi"
+	"github.com/deckhouse/yandex-cloud-controller-manager/pkg/yapi"
 
 	mapset "github.com/deckarep/golang-set"
 

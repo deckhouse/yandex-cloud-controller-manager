@@ -82,6 +82,7 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 
 	wg, ctx := errgroup.WithContext(ctx)
 	for _, tg := range tgs {
+		tg := tg
 		wg.Go(func() error {
 			return ntgs.cloud.yandexService.LbSvc.RemoveTGByID(ctx, tg.Id)
 		})
