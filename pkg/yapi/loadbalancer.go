@@ -12,6 +12,8 @@ import (
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type LoadBalancerService struct {
@@ -166,37 +168,32 @@ func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string
 }
 
 func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
-	tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
-		FolderId: ySvc.cloudCtx.FolderID,
-		Name:     tgName,
-		RegionId: ySvc.cloudCtx.RegionID,
-		Targets:  targets,
-	}
-
-	log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
-
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Create(ctx, tgCreateRequest)
-	})
-	if err != nil {
-		if status.Code(err) == codes.AlreadyExists {
-			log.Printf("TG by name %q already exists, attempting an update\n", tgName)
-		} else if status.Code(err) == codes.InvalidArgument && strings.Contains(status.Convert(err).Message(), "One of the targets already a part of the another target group") {
-			log.Printf("TG with the same targets exists already, attempting an update")
-		} else {
-			return "", err
-		}
-	} else {
-		return result.(*loadbalancer.TargetGroup).Id, nil
-	}
-
 	log.Printf("retrieving TargetGroup by name %q", tgName)
 	tg, err := ySvc.GetTgByName(ctx, tgName)
 	if err != nil {
 		return "", err
 	}
 	if tg == nil {
-		return "", fmt.Errorf("TG by name %q does not yet exist", tgName)
+		tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
+			FolderId: ySvc.cloudCtx.FolderID,
+			Name:     tgName,
+			RegionId: ySvc.cloudCtx.RegionID,
+			Targets:  targets,
+		}
+
+		log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
+
+		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.TgSvc.Create(ctx, tgCreateRequest)
+		})
+		if err != nil {
+			return "", err
+		}
+		return result.(*loadbalancer.TargetGroup).Id, nil
+	}
+
+	if !diffTargetGroupTargets(targets, tg.Targets) {
+		return tg.Id, nil
 	}
 
 	tgUpdateRequest := &loadbalancer.UpdateTargetGroupRequest{
@@ -209,7 +206,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 
 	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
 
-	result, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 		return ySvc.TgSvc.Update(ctx, tgUpdateRequest)
 	})
 	if err != nil {
@@ -285,6 +282,31 @@ func (ySvc *LoadBalancerService) GetTgByName(ctx context.Context, name string) (
 func shouldRecreate(oldBalancer *loadbalancer.NetworkLoadBalancer, newBalancerSpec *loadbalancer.CreateNetworkLoadBalancerRequest) bool {
 	if newBalancerSpec.Type != oldBalancer.Type {
 		log.Println("LB type mismatch, recreating")
+		return true
+	}
+
+	return false
+}
+
+func diffTargetGroupTargets(expectedTargets []*loadbalancer.Target, actualTargets []*loadbalancer.Target) bool {
+	expectedTargetsByUID := make(map[string]*loadbalancer.Target, len(expectedTargets))
+	for _, target := range expectedTargets {
+		targetUID := fmt.Sprintf("%v:%v", target.SubnetId, target.Address)
+		expectedTargetsByUID[targetUID] = target
+	}
+	actualTargetsByUID := make(map[string]*loadbalancer.Target, len(actualTargets))
+	for _, target := range actualTargets {
+		targetUID := fmt.Sprintf("%v:%v", target.SubnetId, target.Address)
+		actualTargetsByUID[targetUID] = target
+	}
+
+	expectedTargetsUIDs := sets.StringKeySet(expectedTargetsByUID)
+	actualTargetsUIDs := sets.StringKeySet(actualTargetsByUID)
+
+	if expectedTargetsUIDs.Difference(actualTargetsUIDs).Len() > 0 {
+		return true
+	}
+	if actualTargetsUIDs.Difference(expectedTargetsUIDs).Len() > 0 {
 		return true
 	}
 
