@@ -9,7 +9,6 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
-	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -97,25 +96,89 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 	log.Printf("LB %q already exists, attempting an update\n", name)
 
-	lbUpdateRequest := &loadbalancer.UpdateNetworkLoadBalancerRequest{
-		NetworkLoadBalancerId: lb.Id,
-		UpdateMask: &field_mask.FieldMask{
-			Paths: []string{"listeners", "attached_target_groups"},
-		},
-		ListenerSpecs:        listenerSpec,
-		AttachedTargetGroups: attachedTGs,
+	dirty := false
+
+	listenersToAdd, listenersToRemove := diffListeners(listenerSpec, lb.Listeners)
+	for _, listener := range listenersToRemove {
+		req := &loadbalancer.RemoveNetworkLoadBalancerListenerRequest{
+			NetworkLoadBalancerId: lb.Id,
+			ListenerName:          listener.Name,
+		}
+		log.Printf("Removing Listener: %+v", *req)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.RemoveListener(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
+
+		dirty = true
+	}
+	for _, listener := range listenersToAdd {
+		req := &loadbalancer.AddNetworkLoadBalancerListenerRequest{
+			NetworkLoadBalancerId: lb.Id,
+			ListenerSpec:          listener,
+		}
+		log.Printf("Adding Listener: %+v", *req)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.AddListener(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
+
+		dirty = true
 	}
 
-	log.Printf("Updating LoadBalancer: %+v", *lbUpdateRequest)
+	tgsToAttach, tgsToDetach := diffAttachedTargetGroups(attachedTGs, lb.AttachedTargetGroups)
+	for _, tg := range tgsToDetach {
+		req := &loadbalancer.DetachNetworkLoadBalancerTargetGroupRequest{
+			NetworkLoadBalancerId: lb.Id,
+			TargetGroupId:         tg.TargetGroupId,
+		}
+		log.Printf("Detaching TargetGroup: %+v", *req)
 
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Update(ctx, lbUpdateRequest)
-	})
-	if err != nil {
-		return "", err
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.DetachTargetGroup(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
+
+		dirty = true
+	}
+	for _, tg := range tgsToAttach {
+		req := &loadbalancer.AttachNetworkLoadBalancerTargetGroupRequest{
+			NetworkLoadBalancerId: lb.Id,
+			AttachedTargetGroup:   tg,
+		}
+		log.Printf("Attaching TargetGroup: %+v", *req)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.LbSvc.AttachTargetGroup(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
+
+		dirty = true
 	}
 
-	return result.(*loadbalancer.NetworkLoadBalancer).Listeners[0].Address, nil
+	if dirty {
+		log.Printf("Retrieving LoadBalancer %q after update", name)
+		lb, err = ySvc.GetLbByName(ctx, name)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return lb.Listeners[0].Address, nil
 }
 
 func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, clusterName string) (ret []*loadbalancer.TargetGroup, err error) {
@@ -196,6 +259,8 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		return result.(*loadbalancer.TargetGroup).Id, nil
 	}
 
+	dirty := false
+
 	targetsToAdd, targetsToRemove := diffTargetGroupTargets(targets, tg.Targets)
 	if len(targetsToAdd) > 0 {
 		req := &loadbalancer.AddTargetsRequest{
@@ -211,6 +276,8 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		if err != nil {
 			return "", err
 		}
+
+		dirty = true
 	}
 	if len(targetsToRemove) > 0 {
 		req := &loadbalancer.RemoveTargetsRequest{
@@ -223,6 +290,16 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 			return ySvc.TgSvc.RemoveTargets(ctx, req)
 		})
 
+		if err != nil {
+			return "", err
+		}
+
+		dirty = true
+	}
+
+	if dirty {
+		log.Printf("Retrieving TargetGroup %q after update", tgName)
+		tg, err = ySvc.GetTgByName(ctx, tgName)
 		if err != nil {
 			return "", err
 		}
@@ -325,4 +402,103 @@ func diffTargetGroupTargets(expectedTargets []*loadbalancer.Target, actualTarget
 		targetsToRemove = append(targetsToRemove, actualTargetsByUID[targetUID])
 	}
 	return targetsToAdd, targetsToRemove
+}
+
+func diffListeners(expectedListeners []*loadbalancer.ListenerSpec, actualListeners []*loadbalancer.Listener) (listenersToAdd []*loadbalancer.ListenerSpec, listenersToRemove []*loadbalancer.Listener) {
+	foundSet := make(map[string]bool)
+
+	for _, actual := range actualListeners {
+		found := false
+		for _, expected := range expectedListeners {
+			if nlbListenersAreEqual(actual, expected) {
+				// The current listener on the actual
+				// nlb is in the set of desired listeners.
+				foundSet[expected.Name] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			listenersToRemove = append(listenersToRemove, actual)
+		}
+	}
+
+	for _, expected := range expectedListeners {
+		if !foundSet[expected.Name] {
+			listenersToAdd = append(listenersToAdd, expected)
+		}
+	}
+
+	return listenersToAdd, listenersToRemove
+}
+
+func nlbListenersAreEqual(actual *loadbalancer.Listener, expected *loadbalancer.ListenerSpec) bool {
+	if actual.Protocol != expected.Protocol {
+		return false
+	}
+	if actual.Port != expected.Port {
+		return false
+	}
+	if actual.TargetPort != expected.TargetPort {
+		return false
+	}
+	return true
+}
+
+func diffAttachedTargetGroups(expectedTGs []*loadbalancer.AttachedTargetGroup, actualTGs []*loadbalancer.AttachedTargetGroup) (tgsToAttach []*loadbalancer.AttachedTargetGroup, tgsToDetach []*loadbalancer.AttachedTargetGroup) {
+	foundSet := make(map[string]bool)
+
+	for _, actual := range actualTGs {
+		found := false
+		for _, expected := range expectedTGs {
+			if nlbAttachedTargetGroupsAreEqual(actual, expected) {
+				foundSet[expected.TargetGroupId] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			tgsToDetach = append(tgsToDetach, actual)
+		}
+	}
+
+	for _, expected := range expectedTGs {
+		if !foundSet[expected.TargetGroupId] {
+			tgsToAttach = append(tgsToAttach, expected)
+		}
+	}
+
+	return tgsToAttach, tgsToDetach
+}
+
+func nlbAttachedTargetGroupsAreEqual(actual *loadbalancer.AttachedTargetGroup, expected *loadbalancer.AttachedTargetGroup) bool {
+	if actual.TargetGroupId != expected.TargetGroupId {
+		return false
+	}
+	if len(actual.HealthChecks) == 0 {
+		return false
+	}
+	actualHealthCheck := actual.HealthChecks[0]
+	expectedHealthCheck := expected.HealthChecks[0]
+	if actualHealthCheck.Name != expectedHealthCheck.Name {
+		return false
+	}
+	if actualHealthCheck.UnhealthyThreshold != expectedHealthCheck.UnhealthyThreshold {
+		return false
+	}
+	if actualHealthCheck.HealthyThreshold != expectedHealthCheck.HealthyThreshold {
+		return false
+	}
+	actualHealthCheckHttpOptions := actualHealthCheck.GetHttpOptions()
+	if actualHealthCheckHttpOptions == nil {
+		return false
+	}
+	expectedHealthCheckHttpOptions := expectedHealthCheck.GetHttpOptions()
+	if actualHealthCheckHttpOptions.Port != expectedHealthCheckHttpOptions.Port {
+		return false
+	}
+	if actualHealthCheckHttpOptions.Path != expectedHealthCheckHttpOptions.Path {
+		return false
+	}
+	return true
 }
