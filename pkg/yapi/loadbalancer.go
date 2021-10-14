@@ -43,15 +43,6 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 		}
 	}
 
-	lbCreateRequest := &loadbalancer.CreateNetworkLoadBalancerRequest{
-		FolderId:             ySvc.cloudCtx.FolderID,
-		Name:                 name,
-		RegionId:             ySvc.cloudCtx.RegionID,
-		Type:                 nlbType,
-		ListenerSpecs:        listenerSpec,
-		AttachedTargetGroups: attachedTGs,
-	}
-
 	log.Printf("Getting LB by name: %q", name)
 	lb, err := ySvc.GetLbByName(ctx, name)
 	if err != nil {
@@ -60,6 +51,15 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 		} else {
 			return "", err
 		}
+	}
+
+	lbCreateRequest := &loadbalancer.CreateNetworkLoadBalancerRequest{
+		FolderId:             ySvc.cloudCtx.FolderID,
+		Name:                 name,
+		RegionId:             ySvc.cloudCtx.RegionID,
+		Type:                 nlbType,
+		ListenerSpecs:        listenerSpec,
+		AttachedTargetGroups: attachedTGs,
 	}
 
 	if lb == nil {
@@ -171,7 +171,11 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 	log.Printf("retrieving TargetGroup by name %q", tgName)
 	tg, err := ySvc.GetTgByName(ctx, tgName)
 	if err != nil {
-		return "", err
+		if status.Code(err) == codes.NotFound {
+			log.Println("TG not found, creating new TG")
+		} else {
+			return "", err
+		}
 	}
 	if tg == nil {
 		tgCreateRequest := &loadbalancer.CreateTargetGroupRequest{
@@ -192,28 +196,39 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		return result.(*loadbalancer.TargetGroup).Id, nil
 	}
 
-	if !diffTargetGroupTargets(targets, tg.Targets) {
-		return tg.Id, nil
+	targetsToAdd, targetsToRemove := diffTargetGroupTargets(targets, tg.Targets)
+	if len(targetsToAdd) > 0 {
+		req := &loadbalancer.AddTargetsRequest{
+			TargetGroupId: tg.Id,
+			Targets:       targetsToAdd,
+		}
+		log.Printf("Adding Targets: %+v", *req)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.TgSvc.AddTargets(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
+	}
+	if len(targetsToRemove) > 0 {
+		req := &loadbalancer.RemoveTargetsRequest{
+			TargetGroupId: tg.Id,
+			Targets:       targetsToRemove,
+		}
+		log.Printf("Removing Targets: %+v", *req)
+
+		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.TgSvc.RemoveTargets(ctx, req)
+		})
+
+		if err != nil {
+			return "", err
+		}
 	}
 
-	tgUpdateRequest := &loadbalancer.UpdateTargetGroupRequest{
-		TargetGroupId: tg.Id,
-		UpdateMask: &field_mask.FieldMask{
-			Paths: []string{"targets", "labels"},
-		},
-		Targets: targets,
-	}
-
-	log.Printf("Updating TargetGroup: %+v", *tgUpdateRequest)
-
-	result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Update(ctx, tgUpdateRequest)
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return result.(*loadbalancer.TargetGroup).Id, nil
+	return tg.Id, nil
 }
 
 func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) error {
@@ -288,7 +303,7 @@ func shouldRecreate(oldBalancer *loadbalancer.NetworkLoadBalancer, newBalancerSp
 	return false
 }
 
-func diffTargetGroupTargets(expectedTargets []*loadbalancer.Target, actualTargets []*loadbalancer.Target) bool {
+func diffTargetGroupTargets(expectedTargets []*loadbalancer.Target, actualTargets []*loadbalancer.Target) (targetsToAdd []*loadbalancer.Target, targetsToRemove []*loadbalancer.Target) {
 	expectedTargetsByUID := make(map[string]*loadbalancer.Target, len(expectedTargets))
 	for _, target := range expectedTargets {
 		targetUID := fmt.Sprintf("%v:%v", target.SubnetId, target.Address)
@@ -303,12 +318,11 @@ func diffTargetGroupTargets(expectedTargets []*loadbalancer.Target, actualTarget
 	expectedTargetsUIDs := sets.StringKeySet(expectedTargetsByUID)
 	actualTargetsUIDs := sets.StringKeySet(actualTargetsByUID)
 
-	if expectedTargetsUIDs.Difference(actualTargetsUIDs).Len() > 0 {
-		return true
+	for _, targetUID := range expectedTargetsUIDs.Difference(actualTargetsUIDs).List() {
+		targetsToAdd = append(targetsToAdd, expectedTargetsByUID[targetUID])
 	}
-	if actualTargetsUIDs.Difference(expectedTargetsUIDs).Len() > 0 {
-		return true
+	for _, targetUID := range actualTargetsUIDs.Difference(expectedTargetsUIDs).List() {
+		targetsToRemove = append(targetsToRemove, actualTargetsByUID[targetUID])
 	}
-
-	return false
+	return targetsToAdd, targetsToRemove
 }
