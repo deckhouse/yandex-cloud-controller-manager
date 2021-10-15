@@ -41,7 +41,7 @@ spec:
         - key: "CriticalAddonsOnly"
           operator: "Exists"
       containers:
-        - image: registry.deckhouse.io/yandex-cloud-controller-manager/yandex-cloud-controller-manager:v0.21.2
+        - image: registry.deckhouse.io/yandex-cloud-controller-manager/yandex-cloud-controller-manager:v0.21.3
           name: yandex-cloud-controller-manager
           command:
             - /bin/yandex-cloud-controller-manager
