@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.15.5-alpine3.12 as build
+FROM golang:1.16.5-alpine3.12 as build
 
 ARG CGO_ENABLED=0
 ARG GOOS=linux
