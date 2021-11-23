@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.15.5-alpine3.12 as build
+FROM golang:1.16.10-alpine3.13 as build
 
 ARG CGO_ENABLED=0
 ARG GOOS=linux
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} \
     ./cmd/yandex-cloud-controller-manager
 
 
-FROM alpine:3.12
+FROM alpine:3.13
 
 RUN apk add --no-cache ca-certificates
 COPY --from=build /go/bin/yandex-cloud-controller-manager /bin/
