@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/prometheus/common/log"
+	log "k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -51,7 +51,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 		if err != nil {
 			log.Infof("Failed to verify NextHop relevance: %s", err)
 		} else if currentNextHop != internalIP {
-			log.Warnf("Changing %q's NextHop from %s to %s", nodeName, currentNextHop, internalIP)
+			log.Warningf("Changing %q's NextHop from %s to %s", nodeName, currentNextHop, internalIP)
 
 			filteredStaticRoutes := filterStaticRoutes(routeTable.StaticRoutes, routeFilterTerm{
 				termType:        routeFilterAddOrUpdate,
