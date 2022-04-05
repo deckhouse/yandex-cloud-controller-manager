@@ -33,7 +33,7 @@ gofmt:
 .PHONY: gofmt
 
 lint: $(GOPATH)/bin/golangci-lint
-	golangci-lint run ./...
+	golangci-lint run
 .PHONY: lint
 
 goimports: $(GOPATH)/bin/goimports
