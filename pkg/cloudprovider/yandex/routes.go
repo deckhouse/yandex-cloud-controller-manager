@@ -4,19 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/prometheus/common/log"
-
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
-
-	"k8s.io/apimachinery/pkg/types"
-
-	"google.golang.org/genproto/protobuf/field_mask"
-
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
-
+	"google.golang.org/genproto/protobuf/field_mask"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -49,9 +43,9 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 		currentNextHop := staticRoute.NextHop.(*vpc.StaticRoute_NextHopAddress).NextHopAddress
 		internalIP, err := yc.getInternalIpByNodeName(nodeName)
 		if err != nil {
-			log.Infof("Failed to verify NextHop relevance: %s", err)
+			klog.Infof("Failed to verify NextHop relevance: %s", err)
 		} else if currentNextHop != internalIP {
-			log.Warnf("Changing %q's NextHop from %s to %s", nodeName, currentNextHop, internalIP)
+			klog.Warningf("Changing %q's NextHop from %s to %s", nodeName, currentNextHop, internalIP)
 
 			filteredStaticRoutes := filterStaticRoutes(routeTable.StaticRoutes, routeFilterTerm{
 				termType:        routeFilterAddOrUpdate,
@@ -85,7 +79,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 }
 
 func (yc *Cloud) CreateRoute(ctx context.Context, _ string, _ string, route *cloudprovider.Route) error {
-	log.Infof("CreateRoute called with %+v", *route)
+	klog.Infof("CreateRoute called with %+v", *route)
 
 	rt, err := yc.yandexService.VPCSvc.RouteTableSvc.Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
 	if err != nil {
@@ -118,7 +112,7 @@ func (yc *Cloud) CreateRoute(ctx context.Context, _ string, _ string, route *clo
 }
 
 func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider.Route) error {
-	log.Infof("DeleteRoute called with %+v", *route)
+	klog.Infof("DeleteRoute called with %+v", *route)
 
 	rt, err := yc.yandexService.VPCSvc.RouteTableSvc.Get(ctx, &vpc.GetRouteTableRequest{RouteTableId: yc.config.RouteTableID})
 	if err != nil {
@@ -210,7 +204,7 @@ func filterStaticRoutes(staticRoutes []*vpc.StaticRoute, filterTerms ...routeFil
 			}
 
 			if filter.termType == routeFilterRemove {
-				log.Infof("Removing %+v StaticRoute from Yandex.Cloud", existingStaticRoute)
+				klog.Infof("Removing %+v StaticRoute from Yandex.Cloud", existingStaticRoute)
 				deleteRoute = true
 				break
 			}
