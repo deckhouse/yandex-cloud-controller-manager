@@ -39,7 +39,7 @@ func (yc *Cloud) InstanceID(ctx context.Context, nodeName types.NodeName) (strin
 		return "", err
 	}
 
-	return instance.Id, nil
+	return fmt.Sprintf("yandex://%s", instance.Id), nil
 }
 
 func (yc *Cloud) InstanceType(_ context.Context, _ types.NodeName) (string, error) {
