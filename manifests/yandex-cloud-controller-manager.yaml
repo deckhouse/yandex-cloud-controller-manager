@@ -28,7 +28,7 @@ spec:
       serviceAccountName: cloud-controller-manager
       nodeSelector:
         # The CCM will only run on masters
-        node-role.kubernetes.io/master: ""
+        node-role.kubernetes.io/control-plane: ""
       tolerations:
         # this taint is set on all nodes when an external CCM is used
         # so we should tolerate it to schedule our CCM
@@ -36,7 +36,7 @@ spec:
           value: "true"
           effect: "NoSchedule"
         # CCM should be able to run on masters
-        - key: "node-role.kubernetes.io/master"
+        - key: "node-role.kubernetes.io/control-plane"
           effect: "NoSchedule"
         - key: "CriticalAddonsOnly"
           operator: "Exists"
