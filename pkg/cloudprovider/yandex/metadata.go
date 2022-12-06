@@ -2,7 +2,7 @@ package yandex
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -98,7 +98,7 @@ func (m *MetadataService) Get(suffix string) (string, error) {
 		return "", fmt.Errorf("unexpected status code while trying to request %s: %d", url, res.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", err
 	}
