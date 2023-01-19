@@ -27,7 +27,7 @@ func (yc *Cloud) ListRoutes(ctx context.Context, _ string) ([]*cloudprovider.Rou
 	klog.Info("ListRoutes called")
 
 	if routeAPILock.TryLock() {
-		routeAPILock.Unlock()
+		defer routeAPILock.Unlock()
 	} else {
 		return nil, errors.New("VPC route API locked")
 	}
