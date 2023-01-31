@@ -1,0 +1,53 @@
+
+serviceAccountJSON: ""
+folderID: ""
+vpcID: ""
+routeTableID: ""
+
+clusterName: ""
+podCIDR: ""
+
+k8sApiServer: ""
+k8sApiServerPort: ""
+
+
+controller:
+  replicas: 1
+  
+  image:
+    pullPolicy: IfNotPresent
+    repository: registry.deckhouse.io/yandex-cloud-controller-manager/yandex-cloud-controller-manager
+    tag: ""
+
+  extraArgs:
+    leader-elect: true
+    allocate-node-cidrs: true
+    configure-cloud-routes: true
+    v: 2
+
+  ports:
+    addressPort: 11258
+    addressPortAlias: https
+
+defaults:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      ephemeral-storage: 50Mi
+      cpu: 100m
+      memory: 128Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+
+  terminationMessagePath: /dev/termination-log
+  terminationMessagePolicy: File
+
+  tolerations:
+    - operator: Exists
+
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
