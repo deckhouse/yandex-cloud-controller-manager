@@ -1,0 +1,170 @@
+# NOTE: this manifest is only compatible with Kubernetes versions >=v1.21
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "yandex-cloud-controller.name" . }}
+spec:
+
+  progressDeadlineSeconds: 600
+  replicas: {{ .Values.controller.replicas | default 1 }}
+  revisionHistoryLimit: {{ .Values.controller.revisionHistoryLimit | default 2 }}
+
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+
+  selector:
+    matchLabels:
+      app: {{ include "yandex-cloud-controller.name" $ }}
+
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: {{ include "yandex-cloud-controller.name" $ }}
+
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: {{ include "yandex-cloud-controller.name" $ }}
+
+      containers:
+      {{- with .Values.controller }}
+      - name: {{ include "yandex-cloud-controller.name" $ }}
+        command: 
+          - /bin/yandex-cloud-controller-manager
+        args:
+          - --cluster-cidr={{ $.Values.podCIDR }}
+          - --cloud-provider=yandex
+          - --cluster-name={{ $.Values.clusterName }}
+          # - --bind-address=$(BIND_IP)
+          - --secure-port={{ .ports.addressPort }}
+          {{- with .extraArgs }}
+            {{- range $k, $v := . }}
+          - --{{- $k }}={{ $v -}}
+            {{end}}
+          {{- end }}
+
+        env:
+          - name: BIND_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+
+          - name: YANDEX_CLUSTER_NAME
+            value: {{ $.Values.clusterName }}
+
+          - name: YANDEX_CLOUD_SERVICE_ACCOUNT_JSON
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "yandex-cloud-controller.name" $ }}
+                key: serviceAccountJSON
+
+          - name: YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID
+          
+          - name: YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "yandex-cloud-controller.name" $ }}
+                key: vpcID
+
+          - name: KUBERNETES_SERVICE_HOST
+            value: "{{ $.Values.k8sApiServer }}"
+
+          - name: KUBERNETES_SERVICE_PORT_HTTPS
+            value: "{{ $.Values.k8sApiServerPort }}"
+
+          - name: YANDEX_CLOUD_INTERNAL_NETWORK_IDS
+
+          - name: YANDEX_CLOUD_EXTERNAL_NETWORK_IDS
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "yandex-cloud-controller.name" $ }}
+                key: vpcID
+
+          - name: YANDEX_CLOUD_ROUTE_TABLE_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "yandex-cloud-controller.name" $ }}
+                key: routeTableID
+
+        image: {{ .image.repository }}:{{ .image.tag | default (printf "v%s" $.Chart.AppVersion) }}
+        imagePullPolicy: {{ .image.pullPolicy }}
+
+        {{- with .resources | default $.Values.defaults.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+        {{- with .securityContext | default $.Values.defaults.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+
+        terminationMessagePath: {{ .terminationMessagePath      | default $.Values.defaults.terminationMessagePath }}
+        terminationMessagePolicy: {{ .terminationMessagePolicy  | default $.Values.defaults.terminationMessagePolicy }}
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: {{ .ports.addressPortAlias }}
+            scheme: HTTPS
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: {{ .ports.addressPortAlias }}
+            scheme: HTTPS
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        
+        ports:
+          - containerPort: {{ .ports.addressPort }}
+            hostPort: {{ .ports.addressPort }}
+            name: {{ .ports.addressPortAlias }}
+            protocol: TCP
+
+        {{- end }}
+
+      hostNetwork: {{ .Values.controller.hostNetwork              | default "true" }}
+      dnsPolicy: {{ .Values.controller.dnsPolicy                  | default "ClusterFirst" }}
+      priorityClassName: {{ .Values.controller.priorityClassName  | default "system-cluster-critical" }}
+      restartPolicy: {{ .Values.controller.restartPolicy          | default "Always" }}
+      schedulerName: {{ .Values.controller.schedulerName          | default "default-scheduler" }}
+
+      securityContext:
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+
+      serviceAccount: {{ include "yandex-cloud-controller.name" . }}
+      serviceAccountName: {{ include "yandex-cloud-controller.name" . }}
+      terminationGracePeriodSeconds: 30
+
+      {{- with .Values.controller.tolerations | default .Values.defaults.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 10 }}
+      {{- end }}
+
+      {{- with .Values.controller.nodeSelector | default .Values.defaults.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 10 }}
+      {{- end }}

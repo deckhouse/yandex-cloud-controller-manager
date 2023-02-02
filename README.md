@@ -130,6 +130,12 @@ Due to API limitations, only one subnet from each zone must be present in each N
 * `yandex.cpi.flant.com/listener-address-ipv4` – select pre-defined IPv4 address. Works both on internal and external NetworkLoadBalancers.
 * `yandex.cpi.flant.com/loadbalancer-external` – override `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` per-service.
 
+## Attention
+
+*`1. If masters are created with their own target groups, then you need to attach the node.kubernetes.io/exclude-from-external-load-balancers: "" label on them so that the controller does not try to add the master to a new target group for balancers `
+
+*`2. If you want to add a balancer for the masters yourself, so that ycc could also hang its own balancers on the masters, create a target group in advance by the name mask ${CLUSTER-NAME}${VPC.ID}`
+
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language.
 Currently, it is developed and tested on **Go 1.13.6**.
