@@ -2,9 +2,9 @@ package yandex
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
@@ -77,9 +77,20 @@ func (yc *Cloud) CreateRoute(ctx context.Context, _ string, _ string, route *clo
 	}
 
 	kubeNodeName := string(route.TargetNode)
-	nextHop, err := yc.getInternalIpByNodeName(kubeNodeName)
+	addresses, err := yc.NodeAddresses(ctx, route.TargetNode)
 	if err != nil {
 		return err
+	}
+
+	var nextHop string
+	for _, address := range addresses {
+		if address.Type == v1.NodeInternalIP {
+			nextHop = address.Address
+			break
+		}
+	}
+	if len(nextHop) == 0 {
+		return spew.Errorf("could not determine InternalIP from list of IPs for VM %q: %v", route.TargetNode, addresses)
 	}
 
 	newStaticRoutes := filterStaticRoutes(rt.StaticRoutes, routeFilterTerm{
@@ -131,25 +142,6 @@ func (yc *Cloud) DeleteRoute(ctx context.Context, _ string, route *cloudprovider
 
 	_, _, err = yc.yandexService.OperationWaiter(ctx, func() (*operation.Operation, error) { return yc.yandexService.VPCSvc.RouteTableSvc.Update(ctx, req) })
 	return err
-}
-
-func (yc *Cloud) getInternalIpByNodeName(nodeName string) (string, error) {
-	kubeNode, err := yc.nodeLister.Get(nodeName)
-	if err != nil {
-		return "", err
-	}
-
-	var targetInternalIP string
-	for _, address := range kubeNode.Status.Addresses {
-		if address.Type == v1.NodeInternalIP {
-			targetInternalIP = address.Address
-		}
-	}
-	if len(targetInternalIP) == 0 {
-		return "", fmt.Errorf("no InternalIPs found for Node %q", nodeName)
-	}
-
-	return targetInternalIP, nil
 }
 
 type routeFilterTerm struct {
