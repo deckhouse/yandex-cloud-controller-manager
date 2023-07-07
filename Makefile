@@ -48,4 +48,4 @@ $(GOPATH)/bin/goimports:
 	go install golang.org/x/tools/cmd/goimports@latest
 
 $(GOPATH)/bin/golangci-lint:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.1
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3

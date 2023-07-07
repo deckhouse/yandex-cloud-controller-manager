@@ -16,23 +16,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.19
-      - uses: actions/checkout@v3.5.2
+          go-version: '1.20'
+      - uses: actions/checkout@v3.5.3
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3.4.0
+        uses: golangci/golangci-lint-action@v3.6.0
         with:
-          version: v1.50.1
+          version: v1.53.3
           args: --timeout=5m
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.19
-      - uses: actions/checkout@v3.5.2
+          go-version: '1.20'
+      - uses: actions/checkout@v3.5.3
       - name: Test
         run: go test -v -coverprofile=coverage.txt -covermode=atomic ./...
       - name: Upload coverage report
@@ -45,7 +45,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3.5.2
+      - uses: actions/checkout@v3.5.3
       # Login against a Docker registry except on PR
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
