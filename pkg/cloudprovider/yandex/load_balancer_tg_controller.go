@@ -38,14 +38,19 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 	ntgs.tgSyncLock.Lock()
 	defer ntgs.tgSyncLock.Unlock()
 
+	log.Printf("SyncTGs start")
+	defer log.Printf("SyncTGs finished")
+
 	services, err := ntgs.serviceLister.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to list Services from an internal Indexer: %s", err)
 	}
 
+	log.Printf("SyncTGs: finding active loadbalancer services")
 	var activeLoadBalancerServicesExist bool
 	for _, service := range services {
 		if service.Spec.Type == corev1.ServiceTypeLoadBalancer && service.ObjectMeta.DeletionTimestamp == nil {
+			log.Printf("Found active loadbalancer service %s/%s", service.Namespace, service.Name)
 			activeLoadBalancerServicesExist = true
 			break
 		}
@@ -75,6 +80,9 @@ func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
 }
 
 func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) error {
+	log.Printf("cleanUpTargetGroups start")
+	defer log.Printf("cleanUpTargetGroups finished")
+
 	tgs, err := ntgs.cloud.yandexService.LbSvc.GetTGsByClusterName(ctx, ntgs.cloud.config.ClusterName)
 	if err != nil {
 		return err
@@ -98,6 +106,9 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 }
 
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
+	log.Printf("synchronizeNodesWithTargetGroups start")
+	defer log.Printf("synchronizeNodesWithTargetGroups finished")
+
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
 		return nil
