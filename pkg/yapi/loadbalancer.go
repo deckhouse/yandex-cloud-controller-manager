@@ -33,7 +33,34 @@ func NewLoadBalancerService(lbSvc loadbalancer.NetworkLoadBalancerServiceClient,
 	}
 }
 
+func logOperation(msgPrefix string, op *operation.Operation, err error) {
+	id := "unknown"
+	description := "no description"
+	isDone := "unknown"
+	str := "no str"
+	if op != nil {
+		id = op.Id
+		description = op.Description
+		if op.Done {
+			isDone = "true"
+		} else {
+			isDone = "false"
+		}
+		str = op.String()
+	}
+
+	statusSuffix := "success"
+	if err != nil {
+		statusSuffix = fmt.Sprintf("got error: %v", err)
+	}
+
+	log.Printf("%s - %s.\nId: %s\nDescription: %s\nIsDone:%s\nString: %s", msgPrefix, statusSuffix, id, description, isDone, str)
+}
+
 func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name string, listenerSpec []*loadbalancer.ListenerSpec, attachedTGs []*loadbalancer.AttachedTargetGroup) (string, error) {
+	log.Printf("CreateOrUpdateLB start")
+	defer log.Printf("CreateOrUpdateLB finished")
+
 	var nlbType = loadbalancer.NetworkLoadBalancer_EXTERNAL
 	for _, listener := range listenerSpec {
 		if _, ok := listener.Address.(*loadbalancer.ListenerSpec_InternalAddressSpec); ok {
@@ -65,7 +92,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 		log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
 
 		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.Create(ctx, lbCreateRequest)
+			op, err := ySvc.LbSvc.Create(ctx, lbCreateRequest)
+			logOperation("Creating LB", op, err)
+			return op, err
 		})
 		if err != nil {
 			return "", err
@@ -78,14 +107,19 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 		log.Printf("Re-creating LoadBalancer: %+v", *lbCreateRequest)
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.Delete(ctx, &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id})
+			op, err := ySvc.LbSvc.Delete(ctx, &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id})
+			logOperation("Deleting LB", op, err)
+			return op, err
 		})
+
 		if err != nil {
 			return "", err
 		}
 
 		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.Create(ctx, lbCreateRequest)
+			op, err := ySvc.LbSvc.Create(ctx, lbCreateRequest)
+			logOperation("Creating LB", op, err)
+			return op, err
 		})
 		if err != nil {
 			return "", err
@@ -108,7 +142,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.RemoveListener(ctx, req)
+			op, err := ySvc.LbSvc.RemoveListener(ctx, req)
+			logOperation("Removing listener", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -126,7 +162,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.AddListener(ctx, req)
+			op, err := ySvc.LbSvc.AddListener(ctx, req)
+			logOperation("Adding listener", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -146,7 +184,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.DetachTargetGroup(ctx, req)
+			op, err := ySvc.LbSvc.DetachTargetGroup(ctx, req)
+			logOperation("Detaching target group", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -164,7 +204,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.LbSvc.AttachTargetGroup(ctx, req)
+			op, err := ySvc.LbSvc.AttachTargetGroup(ctx, req)
+			logOperation("Attaching target group", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -187,6 +229,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 }
 
 func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, clusterName string) (ret []*loadbalancer.TargetGroup, err error) {
+	log.Printf("GetTGsByClusterName start")
+	defer log.Printf("GetTGsByClusterName finished")
+
 	result, err := ySvc.TgSvc.List(ctx, &loadbalancer.ListTargetGroupsRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		// FIXME: properly implement iterator
@@ -206,6 +251,9 @@ func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, cluste
 }
 
 func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string) error {
+	log.Printf("RemoveLBByName start")
+	defer log.Printf("RemoveLBByName finished")
+
 	log.Printf("Retrieving LB by name %q", name)
 	lb, err := ySvc.GetLbByName(ctx, name)
 	if err != nil {
@@ -222,7 +270,9 @@ func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string
 
 	log.Printf("Deleting LB by ID %q", lb.Id)
 	_, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.LbSvc.Delete(ctx, lbDeleteRequest)
+		op, err := ySvc.LbSvc.Delete(ctx, lbDeleteRequest)
+		logOperation("Removing LB by ID", op, err)
+		return op, err
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -236,6 +286,9 @@ func (ySvc *LoadBalancerService) RemoveLBByName(ctx context.Context, name string
 }
 
 func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName string, targets []*loadbalancer.Target) (string, error) {
+	log.Printf("CreateOrUpdateTG start")
+	defer log.Printf("CreateOrUpdateTG finished")
+
 	log.Printf("retrieving TargetGroup by name %q", tgName)
 	tg, err := ySvc.GetTgByName(ctx, tgName)
 	if err != nil {
@@ -256,7 +309,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
 
 		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.TgSvc.Create(ctx, tgCreateRequest)
+			op, err := ySvc.TgSvc.Create(ctx, tgCreateRequest)
+			logOperation("Creating target group", op, err)
+			return op, err
 		})
 		if err != nil {
 			return "", err
@@ -275,7 +330,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		log.Printf("Adding Targets: %+v", *req)
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.TgSvc.AddTargets(ctx, req)
+			op, err := ySvc.TgSvc.AddTargets(ctx, req)
+			logOperation("Adding targets", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -292,7 +349,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 		log.Printf("Removing Targets: %+v", *req)
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-			return ySvc.TgSvc.RemoveTargets(ctx, req)
+			op, err := ySvc.TgSvc.RemoveTargets(ctx, req)
+			logOperation("Removing targets", op, err)
+			return op, err
 		})
 
 		if err != nil {
@@ -315,6 +374,9 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 }
 
 func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) error {
+	log.Printf("RemoveTGByID start")
+	defer log.Printf("RemoveTGByID finished")
+
 	tgDeleteRequest := &loadbalancer.DeleteTargetGroupRequest{
 		TargetGroupId: tgId,
 	}
@@ -322,7 +384,9 @@ func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) 
 	log.Printf("Removing TargetGroup: %+v", *tgDeleteRequest)
 
 	_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
-		return ySvc.TgSvc.Delete(ctx, tgDeleteRequest)
+		op, err := ySvc.TgSvc.Delete(ctx, tgDeleteRequest)
+		logOperation("Removing target group", op, err)
+		return op, err
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -336,6 +400,9 @@ func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) 
 }
 
 func (ySvc *LoadBalancerService) GetLbByName(ctx context.Context, name string) (*loadbalancer.NetworkLoadBalancer, error) {
+	log.Printf("GetLbByName start")
+	defer log.Printf("GetLbByName finished")
+
 	result, err := ySvc.LbSvc.List(ctx, &loadbalancer.ListNetworkLoadBalancersRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
@@ -357,6 +424,9 @@ func (ySvc *LoadBalancerService) GetLbByName(ctx context.Context, name string) (
 }
 
 func (ySvc *LoadBalancerService) GetTgByName(ctx context.Context, name string) (*loadbalancer.TargetGroup, error) {
+	log.Printf("GetTgByName start")
+	defer log.Printf("GetTgByName finished")
+
 	result, err := ySvc.TgSvc.List(ctx, &loadbalancer.ListTargetGroupsRequest{
 		FolderId: ySvc.cloudCtx.FolderID,
 		PageSize: 2,
