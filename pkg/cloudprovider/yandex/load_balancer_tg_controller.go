@@ -24,6 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
+// node annotation to put node to the specific target group
+const targetGroupNodeAnnotation = "yandex.cpi.flant.com/target-group"
+
 type NodeTargetGroupSyncer struct {
 	// TODO: refactor cloud out of here
 	cloud *Cloud
@@ -97,6 +100,11 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 	return nil
 }
 
+type instanceWithNodeInfo struct {
+	Instance *compute.Instance
+	Node     *corev1.Node
+}
+
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
@@ -109,7 +117,7 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	}
 
 	// TODO: speed up by not performing individual lookups
-	var instances []*compute.Instance
+	var instances []*instanceWithNodeInfo
 	for _, node := range nodes {
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
 		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
@@ -118,7 +126,7 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 			return fmt.Errorf("failed to find Instance by its name: %s", err)
 		}
 
-		instances = append(instances, instance)
+		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
 	}
 
 	mapping, err := ntgs.constructNetworkIdToTargetMap(ctx, instances)
@@ -126,8 +134,8 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return fmt.Errorf("failed to construct NetworkIdToTargetMap: %s", err)
 	}
 
-	for networkID, targets := range mapping {
-		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, ntgs.cloud.config.ClusterName+networkID, targets)
+	for tgName, targets := range mapping {
+		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, tgName, targets)
 		if err != nil {
 			return err
 		}
@@ -138,18 +146,22 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	return nil
 }
 
-func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Context, instances []*compute.Instance) (networkIdToTargetMap, error) {
+func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Context, instances []*instanceWithNodeInfo) (networkIdToTargetMap, error) {
 	mapping := make(networkIdToTargetMap)
 
 	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
 	for _, instance := range instances {
-		for _, iface := range instance.NetworkInterfaces {
+		for _, iface := range instance.Instance.NetworkInterfaces {
 			subnetInfo, err := ntgs.cloud.yandexService.VPCSvc.SubnetSvc.Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 
-			mapping[subnetInfo.NetworkId] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
+			key := ntgs.cloud.config.ClusterName + subnetInfo.NetworkId
+			if v, ok := instance.Node.Annotations[targetGroupNodeAnnotation]; ok {
+				key = v + subnetInfo.NetworkId
+			}
+			mapping[key] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
 				SubnetId: iface.SubnetId,
 				Address:  iface.PrimaryV4Address.Address,
 			})
