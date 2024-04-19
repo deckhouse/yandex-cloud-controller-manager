@@ -64,7 +64,7 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 	return nil
 }
 
-type networkIdToTargetMap map[string][]*loadbalancer.Target
+type tgNameToTargetMap map[string][]*loadbalancer.Target
 
 func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
 	for _, node := range nodes {
@@ -126,9 +126,9 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
 	}
 
-	mapping, err := ntgs.constructNetworkIdToTargetMap(ctx, instances)
+	mapping, err := ntgs.constructTgNameToTargetMap(ctx, instances)
 	if err != nil {
-		return fmt.Errorf("failed to construct NetworkIdToTargetMap: %s", err)
+		return fmt.Errorf("failed to construct tgNameToTargetMap: %s", err)
 	}
 
 	for tgName, targets := range mapping {
@@ -143,8 +143,8 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	return nil
 }
 
-func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Context, instances []*instanceWithNodeInfo) (networkIdToTargetMap, error) {
-	mapping := make(networkIdToTargetMap)
+func (ntgs *NodeTargetGroupSyncer) constructTgNameToTargetMap(ctx context.Context, instances []*instanceWithNodeInfo) (tgNameToTargetMap, error) {
+	mapping := make(tgNameToTargetMap)
 
 	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
 	for _, instance := range instances {
@@ -158,7 +158,7 @@ func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Con
 			if v, ok := instance.Node.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
 				key = truncateAnnotationValue(v) + key
 			}
-			mapping[key] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
+			mapping[key] = append(mapping[key], &loadbalancer.Target{
 				SubnetId: iface.SubnetId,
 				Address:  iface.PrimaryV4Address.Address,
 			})
