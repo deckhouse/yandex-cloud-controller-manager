@@ -24,9 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-// node annotation to put node to the specific target group
-const targetGroupNodeAnnotation = "yandex.cpi.flant.com/target-group"
-
 type NodeTargetGroupSyncer struct {
 	// TODO: refactor cloud out of here
 	cloud *Cloud
@@ -158,8 +155,8 @@ func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Con
 			}
 
 			key := ntgs.cloud.config.ClusterName + subnetInfo.NetworkId
-			if v, ok := instance.Node.Annotations[targetGroupNodeAnnotation]; ok {
-				key = v + subnetInfo.NetworkId
+			if v, ok := instance.Node.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
+				key = truncateAnnotationValue(v) + key
 			}
 			mapping[key] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
 				SubnetId: iface.SubnetId,
@@ -173,4 +170,13 @@ func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Con
 	}
 
 	return mapping, nil
+}
+
+func truncateAnnotationValue(value string) string {
+	// maximum length of annotation values should not exceed 63 - length of cluster uuid(26 symbols) - length of network id(21)
+	if len(value) > 36 {
+		log.Printf("annotation '%s' length should be less than 36 characters, truncate it", value)
+		value = value[:36]
+	}
+	return value
 }
