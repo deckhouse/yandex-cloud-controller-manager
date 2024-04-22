@@ -197,7 +197,7 @@ func (ySvc *LoadBalancerService) GetTGsByClusterName(ctx context.Context, cluste
 	}
 
 	for _, tg := range result.TargetGroups {
-		if strings.HasPrefix(tg.Name, clusterName) {
+		if strings.Contains(tg.Name, clusterName) {
 			ret = append(ret, tg)
 		}
 	}
