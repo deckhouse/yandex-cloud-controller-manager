@@ -218,13 +218,12 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.listenerSubnetID = value
 	} else if len(yc.config.lbListenerSubnetID) != 0 {
 		lbParams.listenerSubnetID = yc.config.lbListenerSubnetID
-
+		_, isExternal := svc.ObjectMeta.Annotations[externalLoadBalancerAnnotation]
+		lbParams.internal = !isExternal
+	} else if len(yc.config.internalLbListenerSubnetID) != 0 {
 		if _, isInternal := svc.ObjectMeta.Annotations[loadBalancerInternal]; isInternal {
 			lbParams.internal = true
-		}
-
-		if _, isExternal := svc.ObjectMeta.Annotations[externalLoadBalancerAnnotation]; isExternal {
-			lbParams.internal = false
+			lbParams.listenerSubnetID = yc.config.internalLbListenerSubnetID
 		}
 	}
 

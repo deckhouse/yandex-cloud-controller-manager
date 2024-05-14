@@ -29,26 +29,28 @@ import (
 const (
 	providerName = "yandex"
 
-	envClusterName        = "YANDEX_CLUSTER_NAME"
-	envRouteTableID       = "YANDEX_CLOUD_ROUTE_TABLE_ID"
-	envServiceAccountJSON = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
-	envFolderID           = "YANDEX_CLOUD_FOLDER_ID"
-	envLbListenerSubnetID = "YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID"
-	envLbTgNetworkID      = "YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID"
-	envInternalNetworkIDs = "YANDEX_CLOUD_INTERNAL_NETWORK_IDS"
-	envExternalNetworkIDs = "YANDEX_CLOUD_EXTERNAL_NETWORK_IDS"
+	envClusterName                = "YANDEX_CLUSTER_NAME"
+	envRouteTableID               = "YANDEX_CLOUD_ROUTE_TABLE_ID"
+	envServiceAccountJSON         = "YANDEX_CLOUD_SERVICE_ACCOUNT_JSON"
+	envFolderID                   = "YANDEX_CLOUD_FOLDER_ID"
+	envLbListenerSubnetID         = "YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID"
+	envInternalLbListenerSubnetID = "YANDEX_CLOUD_DEFAULT_INTERNAL_LB_LISTENER_SUBNET_ID"
+	envLbTgNetworkID              = "YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID"
+	envInternalNetworkIDs         = "YANDEX_CLOUD_INTERNAL_NETWORK_IDS"
+	envExternalNetworkIDs         = "YANDEX_CLOUD_EXTERNAL_NETWORK_IDS"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
 type CloudConfig struct {
 	ClusterName string
 
-	lbListenerSubnetID string
-	lbTgNetworkID      string
-	FolderID           string
-	LocalRegion        string
-	LocalZone          string
-	RouteTableID       string
+	lbListenerSubnetID         string
+	internalLbListenerSubnetID string
+	lbTgNetworkID              string
+	FolderID                   string
+	LocalRegion                string
+	LocalZone                  string
+	RouteTableID               string
 
 	InternalNetworkIDsSet map[string]struct{}
 	ExternalNetworkIDsSet map[string]struct{}
@@ -126,6 +128,8 @@ func NewCloudConfig() (*CloudConfig, error) {
 	cloudConfig.RouteTableID = os.Getenv(envRouteTableID)
 
 	cloudConfig.lbListenerSubnetID = os.Getenv(envLbListenerSubnetID)
+
+	cloudConfig.internalLbListenerSubnetID = os.Getenv(envInternalLbListenerSubnetID)
 
 	cloudConfig.lbTgNetworkID = os.Getenv(envLbTgNetworkID)
 	if len(cloudConfig.lbTgNetworkID) == 0 {

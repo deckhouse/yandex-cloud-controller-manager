@@ -121,15 +121,16 @@ Due to API limitations, only one subnet from each zone must be present in each N
 * `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` – default NetworkID to use for TargetGroup for created NetworkLoadBalancers.
     * Mandatory.
 * `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` – default SubnetID to use for created NetworkLoadBalancers' listeners.
-    * **Caution!** All newly created NLBs will be EXTERNAL. This can be overriden via `yandex.cpi.flant.com/loadbalancer-internal` [Service annotation](#Service-annotations).
+    * **Caution!** All newly created NLBs will be INTERNAL. This can be overriden via `yandex.cpi.flant.com/loadbalancer-external` [Service annotation](#Service-annotations).
+* `YANDEX_CLOUD_DEFAULT_INTERNAL_LB_LISTENER_SUBNET_ID` - default SubnetID to use for created internal NetworkLoadBalancers' listeners.
 
 ##### Service annotations
 
 * `yandex.cpi.flant.com/target-group-network-id` – override `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID` on a per-service basis.
 * `yandex.cpi.flant.com/listener-subnet-id` – default SubnetID to use for Listeners in created NetworkLoadBalancers. NetworkLoadBalancers will be INTERNAL.
 * `yandex.cpi.flant.com/listener-address-ipv4` – select pre-defined IPv4 address. Works both on internal and external NetworkLoadBalancers.
-* `yandex.cpi.flant.com/loadbalancer-internal` – override `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` per-service.
-* `yandex.cpi.flant.com/loadbalancer-external` – override `yandex.cpi.flant.com/loadbalancer-internal` per-service.
+* `yandex.cpi.flant.com/loadbalancer-external` – override `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` per-service.
+* `yandex.cpi.flant.com/loadbalancer-internal` – Create an internal NetworkLoadBalancers. The SubnetID from `YANDEX_CLOUD_DEFAULT_INTERNAL_LB_LISTENER_SUBNET_ID` will be used.
 
 * `yandex.cpi.flant.com/target-group-name-prefix` - set target group for LB to target group with name `yandex.cpi.flant.com/target-group-name-prefix` annotation value + yandex cluster name + `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID`.
 
