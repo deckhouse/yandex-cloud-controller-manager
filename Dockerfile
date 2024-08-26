@@ -28,7 +28,7 @@ RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} \
     ./cmd/yandex-cloud-controller-manager
 
 
-FROM alpine:3.19
+FROM alpine:3.20@sha256:0a4eaa0eecf5f8c050e5bba433f58c052be7587ee8af3e8b3910ef9ab5fbe9f5
 
 RUN apk add --no-cache ca-certificates
 COPY --from=build /go/bin/yandex-cloud-controller-manager /bin/
