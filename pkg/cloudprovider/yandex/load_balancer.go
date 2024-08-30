@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
 	v1 "k8s.io/api/core/v1"
 	svchelpers "k8s.io/cloud-provider/service/helpers"
 )
@@ -19,6 +20,12 @@ const (
 	externalLoadBalancerAnnotation        = "yandex.cpi.flant.com/loadbalancer-external"
 	listenerSubnetIdAnnotation            = "yandex.cpi.flant.com/listener-subnet-id"
 	listenerAddressIPv4                   = "yandex.cpi.flant.com/listener-address-ipv4"
+
+	// healthcheck options
+	healthcheckIntervalSeconds    = "yandex.cpi.flant.com/healthcheck-interval-seconds"
+	healthcheckTimeoutSeconds     = "yandex.cpi.flant.com/healthcheck-timeout-seconds"
+	healthcheckUnhealthyThreshold = "yandex.cpi.flant.com/healthcheck-unhealthy-threshold"
+	healthcheckHealthyThreshold   = "yandex.cpi.flant.com/healthcheck-healthy-threshold"
 
 	nodesHealthCheckPath = "/healthz"
 	// NOTE: Please keep the following port in sync with ProxyHealthzPort in pkg/cluster/ports/ports.go
@@ -114,7 +121,11 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 	}
 
 	lbName := defaultLoadBalancerName(service)
-	lbParams := yc.getLoadBalancerParameters(service)
+	lbParams, err := yc.getLoadBalancerParameters(service)
+
+	if err != nil {
+		return nil, fmt.Errorf("error while extracting parameters: %w", err)
+	}
 
 	var listenerSpecs []*loadbalancer.ListenerSpec
 	for index, svcPort := range service.Spec.Ports {
@@ -165,20 +176,43 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		hcPath, hcPort = svchelpers.GetServiceHealthCheckPathPort(service)
 	}
 
-	log.Printf("Health checking on path %q and port %v", hcPath, hcPort)
-	healthChecks := []*loadbalancer.HealthCheck{
-		{
-			Name:               "kube-health-check",
-			UnhealthyThreshold: 2,
-			HealthyThreshold:   2,
-			Options: &loadbalancer.HealthCheck_HttpOptions_{
-				HttpOptions: &loadbalancer.HealthCheck_HttpOptions{
-					Port: int64(hcPort),
-					Path: hcPath,
-				},
+	healthCheck := &loadbalancer.HealthCheck{
+		Name:               "kube-health-check",
+		UnhealthyThreshold: 2,
+		HealthyThreshold:   2,
+		Options: &loadbalancer.HealthCheck_HttpOptions_{
+			HttpOptions: &loadbalancer.HealthCheck_HttpOptions{
+				Port: int64(hcPort),
+				Path: hcPath,
 			},
 		},
 	}
+
+	if lbParams.healthcheckIntervalSeconds > 0 {
+		healthCheck.Interval = &durationpb.Duration{Seconds: int64(lbParams.healthcheckIntervalSeconds)}
+	}
+
+	if lbParams.healthcheckTimeoutSeconds > 0 {
+		healthCheck.Timeout = &durationpb.Duration{Seconds: int64(lbParams.healthcheckTimeoutSeconds)}
+	}
+
+	if lbParams.healthcheckUnhealthyThreshold > 0 {
+		healthCheck.UnhealthyThreshold = int64(lbParams.healthcheckUnhealthyThreshold)
+	}
+
+	if lbParams.healthcheckHealthyThreshold > 0 {
+		healthCheck.HealthyThreshold = int64(lbParams.healthcheckHealthyThreshold)
+	}
+
+	log.Printf("Health checking on path %q and port %v; interval %v, timeout %v, UnhealthyThreshold %d, HealthyThreshold %d",
+		healthCheck.GetHttpOptions().Path,
+		healthCheck.GetHttpOptions().Port,
+		healthCheck.GetInterval(),
+		healthCheck.GetTimeout(),
+		healthCheck.GetUnhealthyThreshold(),
+		healthCheck.GetHealthyThreshold(),
+	)
+	healthChecks := []*loadbalancer.HealthCheck{healthCheck}
 
 	tgName := lbParams.targetGroupNamePrefix + yc.config.ClusterName + lbParams.targetGroupNetworkID
 
@@ -209,9 +243,14 @@ type loadBalancerParameters struct {
 	listenerSubnetID      string
 	listenerAddressIPv4   string
 	internal              bool
+
+	healthcheckIntervalSeconds    int
+	healthcheckTimeoutSeconds     int
+	healthcheckUnhealthyThreshold int
+	healthcheckHealthyThreshold   int
 }
 
-func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalancerParameters) {
+func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalancerParameters, err error) {
 	if value, ok := svc.ObjectMeta.Annotations[listenerSubnetIdAnnotation]; ok {
 		lbParams.internal = true
 		lbParams.listenerSubnetID = value
@@ -235,5 +274,40 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.targetGroupNamePrefix = value
 	}
 
+	if value, ok := svc.ObjectMeta.Annotations[healthcheckIntervalSeconds]; ok {
+		lbParams.healthcheckIntervalSeconds, err = tryAnnotationValueToInt(healthcheckIntervalSeconds, value)
+		if err != nil {
+			return
+		}
+	}
+
+	if value, ok := svc.ObjectMeta.Annotations[healthcheckTimeoutSeconds]; ok {
+		lbParams.healthcheckTimeoutSeconds, err = tryAnnotationValueToInt(healthcheckTimeoutSeconds, value)
+		if err != nil {
+			return
+		}
+	}
+
+	if value, ok := svc.ObjectMeta.Annotations[healthcheckHealthyThreshold]; ok {
+		lbParams.healthcheckHealthyThreshold, err = tryAnnotationValueToInt(healthcheckHealthyThreshold, value)
+		if err != nil {
+			return
+		}
+	}
+
+	if value, ok := svc.ObjectMeta.Annotations[healthcheckUnhealthyThreshold]; ok {
+		lbParams.healthcheckUnhealthyThreshold, err = tryAnnotationValueToInt(healthcheckUnhealthyThreshold, value)
+		if err != nil {
+			return
+		}
+	}
 	return
+}
+
+func tryAnnotationValueToInt(name, value string) (int, error) {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return v, fmt.Errorf("can't convert value of annotation %q to int. value: %q, error %w", name, value, err)
+	}
+	return v, nil
 }
