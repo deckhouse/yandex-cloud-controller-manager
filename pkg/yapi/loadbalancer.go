@@ -506,5 +506,12 @@ func nlbAttachedTargetGroupsAreEqual(actual *loadbalancer.AttachedTargetGroup, e
 	if actualHealthCheckHttpOptions.Path != expectedHealthCheckHttpOptions.Path {
 		return false
 	}
+
+	if actualHealthCheck.Interval.GetSeconds() != expectedHealthCheck.Interval.GetSeconds() {
+		return false
+	}
+	if actualHealthCheck.Timeout.GetSeconds() != expectedHealthCheck.Timeout.GetSeconds() {
+		return false
+	}
 	return true
 }

@@ -178,6 +178,8 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 
 	healthCheck := &loadbalancer.HealthCheck{
 		Name:               "kube-health-check",
+		Interval:           &durationpb.Duration{Seconds: 2},
+		Timeout:            &durationpb.Duration{Seconds: 1},
 		UnhealthyThreshold: 2,
 		HealthyThreshold:   2,
 		Options: &loadbalancer.HealthCheck_HttpOptions_{
