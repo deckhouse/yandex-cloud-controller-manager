@@ -129,12 +129,21 @@ Due to API limitations, only one subnet from each zone must be present in each N
 * `yandex.cpi.flant.com/listener-subnet-id` – default SubnetID to use for Listeners in created NetworkLoadBalancers. NetworkLoadBalancers will be INTERNAL.
 * `yandex.cpi.flant.com/listener-address-ipv4` – select pre-defined IPv4 address. Works both on internal and external NetworkLoadBalancers.
 * `yandex.cpi.flant.com/loadbalancer-external` – override `YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID` per-service.
+* `yandex.cpi.flant.com/target-group-name-prefix` - set target group for LB to target group with name `yandex.cpi.flant.com/target-group-name-prefix` annotation value + yandex cluster name + `YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID`.
+* `yandex.cpi.flant.com/healthcheck-interval-seconds` - healthcheck interval(default 2).
+* `yandex.cpi.flant.com/healthcheck-timeout-seconds` - healthcheck timeout(default 1).
+* `yandex.cpi.flant.com/healthcheck-unhealthy-threshold` - healthcheck unhealthy threshold(default 2).
+* `yandex.cpi.flant.com/healthcheck-healthy-threshold` - healthcheck healthy threshold(default 2).
 
-## Attention
+##### Node annotations
 
-*`1. If masters are created with their own target groups, then you need to attach the node.kubernetes.io/exclude-from-external-load-balancers: "" label on them so that the controller does not try to add the master to a new target group for balancers `
+* `yandex.cpi.flant.com/target-group-name-prefix` - set node to the non-default target group add this annotation to the node.  Yandex CCM creates new target groups with name `yandex.cpi.flant.com/target-group-name-prefix` annotation value + yandex cluster name + network id of instance interfaces.
 
-*`2. If you want to add a balancer for the masters yourself, so that ycc could also hang its own balancers on the masters, create a target group in advance by the name mask ${CLUSTER-NAME}${VPC.ID}`
+## Warning
+
+1. If masters are created with their own target groups, then you need to attach the `node.kubernetes.io/exclude-from-external-load-balancers: ""` label on them so that the controller does not try to add the master to a new target group for balancers
+
+2. If you want to add a balancer for the masters yourself, so that ycc could also hang its own balancers on the masters, create a target group in advance by the name mask `${CLUSTER-NAME}${VPC.ID}`
 
 ## Development
 The `yandex-cloud-controller-manager` is written in Google's Go programming language.
