@@ -13,10 +13,12 @@ import (
 )
 
 const (
-	targetGroupNetworkIdAnnotation = "yandex.cpi.flant.com/target-group-network-id"
-	externalLoadBalancerAnnotation = "yandex.cpi.flant.com/loadbalancer-external"
-	listenerSubnetIdAnnotation     = "yandex.cpi.flant.com/listener-subnet-id"
-	listenerAddressIPv4            = "yandex.cpi.flant.com/listener-address-ipv4"
+	// node annotation to put node to the specific target group
+	customTargetGroupNamePrefixAnnotation = "yandex.cpi.flant.com/target-group-name-prefix"
+	targetGroupNetworkIdAnnotation        = "yandex.cpi.flant.com/target-group-network-id"
+	externalLoadBalancerAnnotation        = "yandex.cpi.flant.com/loadbalancer-external"
+	listenerSubnetIdAnnotation            = "yandex.cpi.flant.com/listener-subnet-id"
+	listenerAddressIPv4                   = "yandex.cpi.flant.com/listener-address-ipv4"
 
 	nodesHealthCheckPath = "/healthz"
 	// NOTE: Please keep the following port in sync with ProxyHealthzPort in pkg/cluster/ports/ports.go
@@ -178,7 +180,8 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		},
 	}
 
-	tgName := yc.config.ClusterName + lbParams.targetGroupNetworkID
+	tgName := lbParams.targetGroupNamePrefix + yc.config.ClusterName + lbParams.targetGroupNetworkID
+
 	tg, err := yc.yandexService.LbSvc.GetTgByName(ctx, tgName)
 	if err != nil {
 		return nil, err
@@ -201,10 +204,11 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 }
 
 type loadBalancerParameters struct {
-	targetGroupNetworkID string
-	listenerSubnetID     string
-	listenerAddressIPv4  string
-	internal             bool
+	targetGroupNetworkID  string
+	targetGroupNamePrefix string
+	listenerSubnetID      string
+	listenerAddressIPv4   string
+	internal              bool
 }
 
 func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalancerParameters) {
@@ -225,6 +229,10 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 
 	if value, ok := svc.ObjectMeta.Annotations[listenerAddressIPv4]; ok {
 		lbParams.listenerAddressIPv4 = value
+	}
+
+	if value, ok := svc.ObjectMeta.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
+		lbParams.targetGroupNamePrefix = value
 	}
 
 	return
