@@ -64,7 +64,7 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 	return nil
 }
 
-type networkIdToTargetMap map[string][]*loadbalancer.Target
+type tgNameToTargetMap map[string][]*loadbalancer.Target
 
 func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
 	for _, node := range nodes {
@@ -97,6 +97,11 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 	return nil
 }
 
+type instanceWithNodeInfo struct {
+	Instance *compute.Instance
+	Node     *corev1.Node
+}
+
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
@@ -109,7 +114,7 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	}
 
 	// TODO: speed up by not performing individual lookups
-	var instances []*compute.Instance
+	var instances []*instanceWithNodeInfo
 	for _, node := range nodes {
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
 		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
@@ -118,16 +123,16 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 			return fmt.Errorf("failed to find Instance by its name: %s", err)
 		}
 
-		instances = append(instances, instance)
+		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
 	}
 
-	mapping, err := ntgs.constructNetworkIdToTargetMap(ctx, instances)
+	mapping, err := ntgs.constructTgNameToTargetMap(ctx, instances)
 	if err != nil {
-		return fmt.Errorf("failed to construct NetworkIdToTargetMap: %s", err)
+		return fmt.Errorf("failed to construct tgNameToTargetMap: %s", err)
 	}
 
-	for networkID, targets := range mapping {
-		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, ntgs.cloud.config.ClusterName+networkID, targets)
+	for tgName, targets := range mapping {
+		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, tgName, targets)
 		if err != nil {
 			return err
 		}
@@ -138,18 +143,22 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	return nil
 }
 
-func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Context, instances []*compute.Instance) (networkIdToTargetMap, error) {
-	mapping := make(networkIdToTargetMap)
+func (ntgs *NodeTargetGroupSyncer) constructTgNameToTargetMap(ctx context.Context, instances []*instanceWithNodeInfo) (tgNameToTargetMap, error) {
+	mapping := make(tgNameToTargetMap)
 
 	// TODO: Implement simple caching mechanism for subnet-VPC membership lookups
 	for _, instance := range instances {
-		for _, iface := range instance.NetworkInterfaces {
+		for _, iface := range instance.Instance.NetworkInterfaces {
 			subnetInfo, err := ntgs.cloud.yandexService.VPCSvc.SubnetSvc.Get(ctx, &vpc.GetSubnetRequest{SubnetId: iface.SubnetId})
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 
-			mapping[subnetInfo.NetworkId] = append(mapping[subnetInfo.NetworkId], &loadbalancer.Target{
+			key := ntgs.cloud.config.ClusterName + subnetInfo.NetworkId
+			if v, ok := instance.Node.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
+				key = truncateAnnotationValue(v) + key
+			}
+			mapping[key] = append(mapping[key], &loadbalancer.Target{
 				SubnetId: iface.SubnetId,
 				Address:  iface.PrimaryV4Address.Address,
 			})
@@ -161,4 +170,13 @@ func (ntgs *NodeTargetGroupSyncer) constructNetworkIdToTargetMap(ctx context.Con
 	}
 
 	return mapping, nil
+}
+
+func truncateAnnotationValue(value string) string {
+	// maximum length of annotation values should not exceed 63 - length of cluster uuid(26 symbols) - length of network id(21)
+	if len(value) > 36 {
+		log.Printf("annotation '%s' length should be less than 36 characters, truncate it", value)
+		value = value[:36]
+	}
+	return value
 }
