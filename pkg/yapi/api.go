@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	//nolint:staticcheck // Ignore SA1019. Need to keep deprecated package for compatibility.
-	"github.com/golang/protobuf/proto"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/operation"
 	ycsdk "github.com/yandex-cloud/go-sdk"
 	ycsdkoperation "github.com/yandex-cloud/go-sdk/operation"
+	"google.golang.org/protobuf/proto"
 )
 
 type OperationWaiter func(ctx context.Context, origFunc func() (*operation.Operation, error)) (proto.Message, *ycsdkoperation.Operation, error)
