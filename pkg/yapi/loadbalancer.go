@@ -62,7 +62,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 	}
 
 	if lb == nil {
-		log.Printf("Creating LoadBalancer: %+v", *lbCreateRequest)
+		log.Printf("Creating LoadBalancer: %s", lbCreateRequest.String())
 
 		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 			return ySvc.LbSvc.Create(ctx, lbCreateRequest)
@@ -75,7 +75,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 	}
 
 	if lb != nil && shouldRecreate(lb, lbCreateRequest) {
-		log.Printf("Re-creating LoadBalancer: %+v", *lbCreateRequest)
+		log.Printf("Re-creating LoadBalancer: %s", lbCreateRequest.String())
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 			return ySvc.LbSvc.Delete(ctx, &loadbalancer.DeleteNetworkLoadBalancerRequest{NetworkLoadBalancerId: lb.Id})
@@ -104,7 +104,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 			NetworkLoadBalancerId: lb.Id,
 			ListenerName:          listener.Name,
 		}
-		log.Printf("Removing Listener: %+v", *req)
+		log.Printf("Removing Listener: %s", req.String())
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
@@ -122,7 +122,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 			NetworkLoadBalancerId: lb.Id,
 			ListenerSpec:          listener,
 		}
-		log.Printf("Adding Listener: %+v", *req)
+		log.Printf("Adding Listener: %s", req.String())
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
@@ -142,7 +142,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 			NetworkLoadBalancerId: lb.Id,
 			TargetGroupId:         tg.TargetGroupId,
 		}
-		log.Printf("Detaching TargetGroup: %+v", *req)
+		log.Printf("Detaching TargetGroup: %v", req.String())
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
@@ -160,7 +160,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateLB(ctx context.Context, name stri
 			NetworkLoadBalancerId: lb.Id,
 			AttachedTargetGroup:   tg,
 		}
-		log.Printf("Attaching TargetGroup: %+v", *req)
+		log.Printf("Attaching TargetGroup: %s", req.String())
 
 		// todo(31337Ghost) it will be better to send requests concurrently
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
@@ -253,7 +253,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 			Targets:  targets,
 		}
 
-		log.Printf("Creating TargetGroup: %+v", *tgCreateRequest)
+		log.Printf("Creating TargetGroup: %s", tgCreateRequest.String())
 
 		result, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 			return ySvc.TgSvc.Create(ctx, tgCreateRequest)
@@ -272,7 +272,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 			TargetGroupId: tg.Id,
 			Targets:       targetsToAdd,
 		}
-		log.Printf("Adding Targets: %+v", *req)
+		log.Printf("Adding Targets: %s", req.String())
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 			return ySvc.TgSvc.AddTargets(ctx, req)
@@ -289,7 +289,7 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 			TargetGroupId: tg.Id,
 			Targets:       targetsToRemove,
 		}
-		log.Printf("Removing Targets: %+v", *req)
+		log.Printf("Removing Targets: %s", req.String())
 
 		_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 			return ySvc.TgSvc.RemoveTargets(ctx, req)
@@ -319,7 +319,7 @@ func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) 
 		TargetGroupId: tgId,
 	}
 
-	log.Printf("Removing TargetGroup: %+v", *tgDeleteRequest)
+	log.Printf("Removing TargetGroup: %+v", tgDeleteRequest.String())
 
 	_, _, err := ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
 		return ySvc.TgSvc.Delete(ctx, tgDeleteRequest)
