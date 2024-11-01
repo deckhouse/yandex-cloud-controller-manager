@@ -17,7 +17,7 @@ require (
 	k8s.io/client-go v0.27.3
 	k8s.io/cloud-provider v0.27.3
 	k8s.io/component-base v0.27.3
-	k8s.io/klog/v2 v2.90.1
+	k8s.io/klog/v2 v2.130.1
 )
 
 require (
@@ -36,7 +36,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.1 // indirect
