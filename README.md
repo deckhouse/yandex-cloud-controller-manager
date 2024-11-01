@@ -1,7 +1,6 @@
 # Kubernetes Cloud Controller Manager for Yandex.Cloud
 ![Actions Status](https://github.com/deckhouse/yandex-cloud-controller-manager/actions/workflows/ci.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/deckhouse/yandex-cloud-controller-manager)](https://goreportcard.com/report/github.com/deckhouse/yandex-cloud-controller-manager)
-[![codecov](https://codecov.io/gh/deckhouse/yandex-cloud-controller-manager/branch/master/graph/badge.svg)](https://codecov.io/gh/deckhouse/yandex-cloud-controller-manager)
 
 ## Overview
 `yandex-cloud-controller-manager` is the Kubernetes Cloud Controller Manager (CCM) implementation for Yandex.Cloud.
