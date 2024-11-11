@@ -8,7 +8,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/yandex-cloud/go-genproto v0.0.0-20241101135610-76a0cfc1a773
 	github.com/yandex-cloud/go-sdk v0.0.0-20241101143304-947cf519f6bd
-	golang.org/x/sync v0.8.0
+	golang.org/x/sync v0.9.0
 	google.golang.org/genproto v0.0.0-20241021214115-324edc3d5d38
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1
