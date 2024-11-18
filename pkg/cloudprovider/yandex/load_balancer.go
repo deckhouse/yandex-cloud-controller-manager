@@ -20,6 +20,7 @@ const (
 	externalLoadBalancerAnnotation        = "yandex.cpi.flant.com/loadbalancer-external"
 	listenerSubnetIdAnnotation            = "yandex.cpi.flant.com/listener-subnet-id"
 	listenerAddressIPv4                   = "yandex.cpi.flant.com/listener-address-ipv4"
+	loadBalancerInternal                  = "yandex.cpi.flant.com/loadbalancer-internal"
 
 	// healthcheck options
 	healthcheckIntervalSeconds    = "yandex.cpi.flant.com/healthcheck-interval-seconds"
@@ -260,6 +261,11 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.listenerSubnetID = yc.config.lbListenerSubnetID
 		_, isExternal := svc.ObjectMeta.Annotations[externalLoadBalancerAnnotation]
 		lbParams.internal = !isExternal
+	} else if len(yc.config.internalLbListenerSubnetID) != 0 {
+		if _, isInternal := svc.ObjectMeta.Annotations[loadBalancerInternal]; isInternal {
+			lbParams.internal = true
+			lbParams.listenerSubnetID = yc.config.internalLbListenerSubnetID
+		}
 	}
 
 	if value, ok := svc.ObjectMeta.Annotations[targetGroupNetworkIdAnnotation]; ok {
