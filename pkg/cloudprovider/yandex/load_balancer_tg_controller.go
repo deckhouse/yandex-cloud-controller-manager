@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"k8s.io/klog/v2"
@@ -116,6 +117,11 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
 	for _, node := range nodes {
+		if !(strings.Contains(node.Spec.ProviderID, "yandex")) {
+			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
+			continue
+		}
+
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
 		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
 		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
