@@ -10,7 +10,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/yandex-cloud/go-genproto v0.0.0-20250127124313-5be1a2cc06d4
 	github.com/yandex-cloud/go-sdk v0.0.0-20250127132311-016f84adc072
-	golang.org/x/sync v0.10.0
+	golang.org/x/sync v0.13.0
 	google.golang.org/genproto v0.0.0-20250124145028-65684f501c47
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
