@@ -12,7 +12,7 @@ require (
 	github.com/yandex-cloud/go-sdk v0.0.0-20250127132311-016f84adc072
 	golang.org/x/sync v0.13.0
 	google.golang.org/genproto v0.0.0-20250124145028-65684f501c47
-	google.golang.org/grpc v1.70.0
+	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.4
 	k8s.io/api v0.32.1
 	k8s.io/apimachinery v0.32.1
