@@ -117,6 +117,10 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
 	for _, node := range nodes {
+		if node.Spec.ProviderID == "" {
+			return errors.Errorf("node %s ProviderID is empty", node.Name)
+		}
+
 		if !(strings.Contains(node.Spec.ProviderID, "yandex")) {
 			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
 			continue
