@@ -68,3 +68,7 @@ spec:
               value: <COMMA_SEPARATED_INTERNAL_NETWORK_IDS>
             - name: YANDEX_CLOUD_EXTERNAL_NETWORK_IDS
               value: <COMMA_SEPARATED_EXTERNAL_NETWORK_IDS>
+            - name: YANDEX_CLOUD_LOCAL_ZONE
+              value: "<YOUR_ZONE>" # Specify the Yandex Cloud zone, e.g., kz-central1-a
+            - name: YANDEX_CLOUD_LOCAL_REGION
+              value: "<YOUR_REGION>" # Specify the Yandex Cloud region, e.g., kz-central1

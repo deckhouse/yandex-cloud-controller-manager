@@ -37,6 +37,8 @@ const (
 	envLbTgNetworkID      = "YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID"
 	envInternalNetworkIDs = "YANDEX_CLOUD_INTERNAL_NETWORK_IDS"
 	envExternalNetworkIDs = "YANDEX_CLOUD_EXTERNAL_NETWORK_IDS"
+	envLocalZone          = "YANDEX_CLOUD_LOCAL_ZONE"
+	envLocalRegion        = "YANDEX_CLOUD_LOCAL_REGION"
 )
 
 // CloudConfig includes all the necessary configuration for creating Cloud object
@@ -148,12 +150,45 @@ func NewCloudConfig() (*CloudConfig, error) {
 	}
 
 	// Retrieve LocalZone
-	localZone := "ru-central1-b"
-	cloudConfig.LocalZone = localZone
-	cloudConfig.LocalRegion, err = GetRegion(localZone)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get region from zone: %s", localZone)
+	localZone := os.Getenv(envLocalZone)
+	if localZone == "" {
+		// If env variable is missing, try metadata service
+		zoneFromMetadata, err := metadata.GetZone()
+		if err != nil {
+			log.Printf("Warning: Failed to get zone from metadata service, will use default. Error: %v", err)
+			// Default to "ru-central1-b" if metadata service fails or is not implemented
+			localZone = "ru-central1-b"
+		} else {
+			localZone = zoneFromMetadata
+		}
 	}
+	cloudConfig.LocalZone = localZone
+	log.Printf("Using Yandex Cloud zone: %s", cloudConfig.LocalZone)
+
+	// Retrieve LocalRegion
+	localRegion := os.Getenv(envLocalRegion)
+	if localRegion != "" {
+		cloudConfig.LocalRegion = localRegion
+		// If region is set via env, and zone is not, this might be an issue.
+		// However, we've already determined zone (env > metadata > default).
+		// We can log a warning if the user-defined region's prefix doesn't match the determined zone's prefix.
+		// For now, we trust the user if they set YANDEX_CLOUD_LOCAL_REGION.
+		// A more robust check could involve verifying the region contains the zone.
+		if !strings.HasPrefix(cloudConfig.LocalZone, localRegion) && len(strings.Split(cloudConfig.LocalZone, "-")) > 1 {
+			zoneRegionPrefix := strings.Split(cloudConfig.LocalZone, "-")[0] + "-" + strings.Split(cloudConfig.LocalZone, "-")[1]
+			if !strings.HasPrefix(localRegion, zoneRegionPrefix) {
+				log.Printf("Warning: Environment variable %s (%s) might be inconsistent with the determined zone %s. Ensure this is intended.", envLocalRegion, localRegion, cloudConfig.LocalZone)
+			}
+		}
+	} else {
+		// If region is not set by env var, derive it from the zone
+		var errRegion error
+		cloudConfig.LocalRegion, errRegion = GetRegion(cloudConfig.LocalZone)
+		if errRegion != nil {
+			return nil, errors.Wrapf(errRegion, "failed to get region from zone: %s", cloudConfig.LocalZone)
+		}
+	}
+	log.Printf("Using Yandex Cloud region: %s", cloudConfig.LocalRegion)
 
 	return cloudConfig, nil
 }

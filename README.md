@@ -53,6 +53,46 @@ The `yandex-cloud-controller-manager` requires a [Service Account Json]([https:/
 * `YANDEX_CLOUD_FOLDER_ID`
 * `YANDEX_CLUSTER_NAME`
 
+### Region and Zone Configuration
+
+You can specify the operational region and zone for the controller manager. This is particularly useful for deployments outside the default `ru-central1-b` zone or when running on infrastructure that may not have access to the metadata service for zone discovery.
+
+*   `YANDEX_CLOUD_LOCAL_ZONE`: Specifies the Yandex Cloud zone the controller manager will operate in.
+    *   Example: `kz-central1-a`
+*   `YANDEX_CLOUD_LOCAL_REGION`: Specifies the Yandex Cloud region. If not set, it will be derived from the `YANDEX_CLOUD_LOCAL_ZONE`.
+    *   Example: `kz-central1`
+
+**Configuration Precedence:**
+
+*   **Zone:**
+    1.  Environment variable: `YANDEX_CLOUD_LOCAL_ZONE`
+    2.  Instance metadata service (if the controller can access it and the variable is not set)
+    3.  Default: `ru-central1-b`
+*   **Region:**
+    1.  Environment variable: `YANDEX_CLOUD_LOCAL_REGION`
+    2.  Derived from the effective zone (determined by the precedence above).
+
+**Setting these variables:**
+
+*   **Helm Chart:** When deploying using the Helm chart, you can set `localZone` and `localRegion` in your `values.yaml` file:
+    ```yaml
+    # In your values.yaml
+    localZone: "kz-central1-a"
+    localRegion: "kz-central1"
+    ```
+*   **Static Manifest:** If using the provided static manifest (`manifests/yandex-cloud-controller-manager.yaml`), you can directly edit the `env` section of the `yandex-cloud-controller-manager` container to set these variables:
+    ```yaml
+    # In manifests/yandex-cloud-controller-manager.yaml
+    # ...
+    env:
+      # ... other environment variables
+      - name: YANDEX_CLOUD_LOCAL_ZONE
+        value: "kz-central1-a" # Specify the Yandex Cloud zone
+      - name: YANDEX_CLOUD_LOCAL_REGION
+        value: "kz-central1"   # Specify the Yandex Cloud region
+    # ...
+    ```
+
 The default manifest is configured to set these environment variables from a secret named `yandex-cloud`:
 
 ```bash
