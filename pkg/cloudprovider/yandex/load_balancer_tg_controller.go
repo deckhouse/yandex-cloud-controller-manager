@@ -46,7 +46,7 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 
 	var activeLoadBalancerServicesExist bool
 	for _, service := range services {
-		if service.Spec.Type == corev1.ServiceTypeLoadBalancer && service.ObjectMeta.DeletionTimestamp == nil {
+		if service.Spec.Type == corev1.ServiceTypeLoadBalancer && service.DeletionTimestamp == nil {
 			activeLoadBalancerServicesExist = true
 			break
 		}
