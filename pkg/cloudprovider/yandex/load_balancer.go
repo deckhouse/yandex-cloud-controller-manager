@@ -268,36 +268,36 @@ func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalanc
 		lbParams.targetGroupNetworkID = yc.config.lbTgNetworkID
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[listenerAddressIPv4]; ok {
+	if value, ok := svc.Annotations[listenerAddressIPv4]; ok {
 		lbParams.listenerAddressIPv4 = value
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
+	if value, ok := svc.Annotations[customTargetGroupNamePrefixAnnotation]; ok {
 		lbParams.targetGroupNamePrefix = value
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[healthcheckIntervalSeconds]; ok {
+	if value, ok := svc.Annotations[healthcheckIntervalSeconds]; ok {
 		lbParams.healthcheckIntervalSeconds, err = tryAnnotationValueToInt(healthcheckIntervalSeconds, value)
 		if err != nil {
 			return
 		}
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[healthcheckTimeoutSeconds]; ok {
+	if value, ok := svc.Annotations[healthcheckTimeoutSeconds]; ok {
 		lbParams.healthcheckTimeoutSeconds, err = tryAnnotationValueToInt(healthcheckTimeoutSeconds, value)
 		if err != nil {
 			return
 		}
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[healthcheckHealthyThreshold]; ok {
+	if value, ok := svc.Annotations[healthcheckHealthyThreshold]; ok {
 		lbParams.healthcheckHealthyThreshold, err = tryAnnotationValueToInt(healthcheckHealthyThreshold, value)
 		if err != nil {
 			return
 		}
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[healthcheckUnhealthyThreshold]; ok {
+	if value, ok := svc.Annotations[healthcheckUnhealthyThreshold]; ok {
 		lbParams.healthcheckUnhealthyThreshold, err = tryAnnotationValueToInt(healthcheckUnhealthyThreshold, value)
 		if err != nil {
 			return
