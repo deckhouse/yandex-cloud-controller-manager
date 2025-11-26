@@ -103,7 +103,7 @@ func (yc *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, _ string, servic
 
 func defaultLoadBalancerName(service *v1.Service) string {
 	ret := "a" + string(service.UID)
-	ret = strings.Replace(ret, "-", "", -1)
+	ret = strings.ReplaceAll(ret, "-", "")
 	if len(ret) > 32 {
 		ret = ret[:32]
 	}
@@ -253,16 +253,16 @@ type loadBalancerParameters struct {
 }
 
 func (yc *Cloud) getLoadBalancerParameters(svc *v1.Service) (lbParams loadBalancerParameters, err error) {
-	if value, ok := svc.ObjectMeta.Annotations[listenerSubnetIdAnnotation]; ok {
+	if value, ok := svc.Annotations[listenerSubnetIdAnnotation]; ok {
 		lbParams.internal = true
 		lbParams.listenerSubnetID = value
 	} else if len(yc.config.lbListenerSubnetID) != 0 {
 		lbParams.listenerSubnetID = yc.config.lbListenerSubnetID
-		_, isExternal := svc.ObjectMeta.Annotations[externalLoadBalancerAnnotation]
+		_, isExternal := svc.Annotations[externalLoadBalancerAnnotation]
 		lbParams.internal = !isExternal
 	}
 
-	if value, ok := svc.ObjectMeta.Annotations[targetGroupNetworkIdAnnotation]; ok {
+	if value, ok := svc.Annotations[targetGroupNetworkIdAnnotation]; ok {
 		lbParams.targetGroupNetworkID = value
 	} else if len(yc.config.lbTgNetworkID) != 0 {
 		lbParams.targetGroupNetworkID = yc.config.lbTgNetworkID

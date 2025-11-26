@@ -81,7 +81,7 @@ func (yc *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID st
 }
 
 func (yc *Cloud) extractNodeAddresses(ctx context.Context, instance *compute.Instance) ([]v1.NodeAddress, error) {
-	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) < 1 {
+	if len(instance.NetworkInterfaces) == 0 {
 		return nil, fmt.Errorf("could not find network interfaces for instance: folderID=%s, name=%s", instance.FolderId, instance.Name)
 	}
 
