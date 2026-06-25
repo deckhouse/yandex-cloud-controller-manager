@@ -177,6 +177,7 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	yc.nodeTargetGroupSyncer = &NodeTargetGroupSyncer{
 		cloud:            yc,
 		serviceLister:    serviceInformer.Lister(),
+		nodeClient:       clientset.CoreV1().Nodes(),
 		lastVisitedNodes: mapset.NewSet(),
 	}
 
