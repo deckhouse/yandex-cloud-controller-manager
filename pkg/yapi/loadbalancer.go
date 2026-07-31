@@ -314,6 +314,44 @@ func (ySvc *LoadBalancerService) CreateOrUpdateTG(ctx context.Context, tgName st
 	return tg.Id, nil
 }
 
+// ReconcileTargetGroups synchronizes all target groups owned by the cluster.
+// Targets are removed from their old groups before they are added to new ones,
+// because Yandex Cloud does not allow a target to belong to multiple groups.
+func (ySvc *LoadBalancerService) ReconcileTargetGroups(ctx context.Context, clusterName string, expected map[string][]*loadbalancer.Target) error {
+	targetGroups, err := ySvc.GetTGsByClusterName(ctx, clusterName)
+	if err != nil {
+		return err
+	}
+
+	for _, targetGroup := range targetGroups {
+		_, targetsToRemove := diffTargetGroupTargets(expected[targetGroup.Name], targetGroup.Targets)
+		if len(targetsToRemove) == 0 {
+			continue
+		}
+
+		req := &loadbalancer.RemoveTargetsRequest{
+			TargetGroupId: targetGroup.Id,
+			Targets:       targetsToRemove,
+		}
+		log.Printf("Removing Targets: %s", req.String())
+
+		_, _, err = ySvc.cloudCtx.OperationWaiter(ctx, func() (*operation.Operation, error) {
+			return ySvc.TgSvc.RemoveTargets(ctx, req)
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	for targetGroupName, targets := range expected {
+		if _, err := ySvc.CreateOrUpdateTG(ctx, targetGroupName, targets); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (ySvc *LoadBalancerService) RemoveTGByID(ctx context.Context, tgId string) error {
 	tgDeleteRequest := &loadbalancer.DeleteTargetGroupRequest{
 		TargetGroupId: tgId,
