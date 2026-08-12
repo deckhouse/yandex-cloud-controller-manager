@@ -1,10 +1,13 @@
 package yandex
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	mapset "github.com/deckarep/golang-set"
 )
@@ -65,5 +68,22 @@ func TestNodeEligibleForLoadBalancer(t *testing.T) {
 	tainted.Spec.Taints = []corev1.Taint{{Key: "ToBeDeletedByClusterAutoscaler"}}
 	if nodeEligibleForLoadBalancer(tainted) {
 		t.Fatal("Node marked for deletion by cluster autoscaler must not be eligible")
+	}
+}
+
+func TestRetryTargetGroupSync(t *testing.T) {
+	attempts := 0
+	err := retryTargetGroupSync(wait.Backoff{Duration: time.Millisecond, Steps: 3}, func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("temporary error")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("retry target group sync: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("sync attempts = %d, want 3", attempts)
 	}
 }

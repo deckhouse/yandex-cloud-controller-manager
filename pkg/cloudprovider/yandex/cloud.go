@@ -13,6 +13,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	v1 "k8s.io/client-go/listers/core/v1"
 
 	"github.com/deckhouse/yandex-cloud-controller-manager/pkg/yapi"
@@ -194,6 +195,20 @@ func nodeEligibleForLoadBalancer(node *corev1.Node) bool {
 	return true
 }
 
+func retryTargetGroupSync(backoff wait.Backoff, syncFn func() error) error {
+	var lastErr error
+	if err := wait.ExponentialBackoff(backoff, func() (bool, error) {
+		lastErr = syncFn()
+		return lastErr == nil, nil
+	}); err != nil {
+		if lastErr != nil {
+			return lastErr
+		}
+		return err
+	}
+	return nil
+}
+
 func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 	yc.nodeUpdateSyncLock.Lock()
 	defer yc.nodeUpdateSyncLock.Unlock()
@@ -226,7 +241,10 @@ func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 			eligibleNodes = append(eligibleNodes, node)
 		}
 	}
-	if err := yc.nodeTargetGroupSyncer.SyncTGs(context.Background(), eligibleNodes); err != nil {
+	backoff := wait.Backoff{Duration: time.Second, Factor: 2, Steps: 5}
+	if err := retryTargetGroupSync(backoff, func() error {
+		return yc.nodeTargetGroupSyncer.SyncTGs(context.Background(), eligibleNodes)
+	}); err != nil {
 		log.Printf("failed to synchronize target groups after Node annotation update: %s", err)
 	}
 }
