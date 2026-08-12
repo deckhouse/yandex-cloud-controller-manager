@@ -29,3 +29,41 @@ func TestNodeTargetGroupSyncState(t *testing.T) {
 		t.Fatal("provider ID change must invalidate the node sync state")
 	}
 }
+
+func TestNodeTargetGroupAnnotationChanged(t *testing.T) {
+	oldNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name:        "node-1",
+		Annotations: map[string]string{customTargetGroupNamePrefixAnnotation: "frontend"},
+	}}
+
+	unrelatedUpdate := oldNode.DeepCopy()
+	unrelatedUpdate.Labels = map[string]string{"example.com/test": "value"}
+	if nodeTargetGroupAnnotationChanged(oldNode, unrelatedUpdate) {
+		t.Fatal("unrelated Node update must not trigger target group synchronization")
+	}
+
+	annotationUpdate := oldNode.DeepCopy()
+	delete(annotationUpdate.Annotations, customTargetGroupNamePrefixAnnotation)
+	if !nodeTargetGroupAnnotationChanged(oldNode, annotationUpdate) {
+		t.Fatal("target group annotation update must trigger synchronization")
+	}
+}
+
+func TestNodeEligibleForLoadBalancer(t *testing.T) {
+	eligible := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "eligible"}}
+	if !nodeEligibleForLoadBalancer(eligible) {
+		t.Fatal("ordinary Node must be eligible")
+	}
+
+	excluded := eligible.DeepCopy()
+	excluded.Labels = map[string]string{corev1.LabelNodeExcludeBalancers: "true"}
+	if nodeEligibleForLoadBalancer(excluded) {
+		t.Fatal("Node excluded from external load balancers must not be eligible")
+	}
+
+	tainted := eligible.DeepCopy()
+	tainted.Spec.Taints = []corev1.Taint{{Key: "ToBeDeletedByClusterAutoscaler"}}
+	if nodeEligibleForLoadBalancer(tainted) {
+		t.Fatal("Node marked for deletion by cluster autoscaler must not be eligible")
+	}
+}
