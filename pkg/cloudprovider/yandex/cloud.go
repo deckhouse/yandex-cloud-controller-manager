@@ -32,7 +32,8 @@ import (
 )
 
 const (
-	providerName = "yandex"
+	providerName           = "yandex"
+	targetGroupSyncTimeout = 10 * time.Minute
 
 	envClusterName        = "YANDEX_CLUSTER_NAME"
 	envRouteTableID       = "YANDEX_CLOUD_ROUTE_TABLE_ID"
@@ -67,7 +68,8 @@ type Cloud struct {
 	nodeTargetGroupSyncer *NodeTargetGroupSyncer
 	config                CloudConfig
 
-	nodeLister v1.NodeLister
+	nodeLister             v1.NodeLister
+	targetGroupSyncContext context.Context
 
 	nodeUpdateSyncLock sync.Mutex
 }
@@ -195,12 +197,15 @@ func nodeEligibleForLoadBalancer(node *corev1.Node) bool {
 	return true
 }
 
-func retryTargetGroupSync(backoff wait.Backoff, syncFn func() error) error {
+func retryTargetGroupSync(ctx context.Context, backoff wait.Backoff, syncFn func(context.Context) error) error {
 	var lastErr error
-	if err := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		lastErr = syncFn()
+	if err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		lastErr = syncFn(ctx)
 		return lastErr == nil, nil
 	}); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if lastErr != nil {
 			return lastErr
 		}
@@ -235,15 +240,17 @@ func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 		return
 	}
 
-	eligibleNodes := nodes[:0]
+	eligibleNodes := make([]*corev1.Node, 0, len(nodes))
 	for _, node := range nodes {
 		if nodeEligibleForLoadBalancer(node) {
 			eligibleNodes = append(eligibleNodes, node)
 		}
 	}
 	backoff := wait.Backoff{Duration: time.Second, Factor: 2, Steps: 5}
-	if err := retryTargetGroupSync(backoff, func() error {
-		return yc.nodeTargetGroupSyncer.SyncTGs(context.Background(), eligibleNodes)
+	ctx, cancel := context.WithTimeout(yc.targetGroupSyncContext, targetGroupSyncTimeout)
+	defer cancel()
+	if err := retryTargetGroupSync(ctx, backoff, func(ctx context.Context) error {
+		return yc.nodeTargetGroupSyncer.SyncTGs(ctx, eligibleNodes)
 	}); err != nil {
 		log.Printf("failed to synchronize target groups after Node annotation update: %s", err)
 	}
@@ -252,6 +259,12 @@ func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
 func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
 	clientset := clientBuilder.ClientOrDie("cloud-controller-manager")
+	targetGroupSyncContext, cancelTargetGroupSync := context.WithCancel(context.Background())
+	yc.targetGroupSyncContext = targetGroupSyncContext
+	go func() {
+		<-stop
+		cancelTargetGroupSync()
+	}()
 
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
 	serviceInformer := informerFactory.Core().V1().Services()

@@ -1,6 +1,7 @@
 package yandex
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestNodeEligibleForLoadBalancer(t *testing.T) {
 
 func TestRetryTargetGroupSync(t *testing.T) {
 	attempts := 0
-	err := retryTargetGroupSync(wait.Backoff{Duration: time.Millisecond, Steps: 3}, func() error {
+	err := retryTargetGroupSync(context.Background(), wait.Backoff{Duration: time.Millisecond, Steps: 3}, func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errors.New("temporary error")
@@ -85,5 +86,21 @@ func TestRetryTargetGroupSync(t *testing.T) {
 	}
 	if attempts != 3 {
 		t.Fatalf("sync attempts = %d, want 3", attempts)
+	}
+}
+
+func TestRetryTargetGroupSyncCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	attempts := 0
+	err := retryTargetGroupSync(ctx, wait.Backoff{Duration: time.Hour, Steps: 3}, func(context.Context) error {
+		attempts++
+		cancel()
+		return errors.New("temporary error")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("retry target group sync error = %v, want context.Canceled", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("sync attempts = %d, want 1", attempts)
 	}
 }
