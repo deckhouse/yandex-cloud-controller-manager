@@ -1,6 +1,7 @@
 package yandex
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,11 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	v1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/deckhouse/yandex-cloud-controller-manager/pkg/yapi"
 
@@ -27,7 +32,10 @@ import (
 )
 
 const (
-	providerName = "yandex"
+	providerName              = "yandex"
+	targetGroupSyncKey        = "target-groups"
+	targetGroupSyncMaxRetries = 5
+	targetGroupSyncTimeout    = 10 * time.Minute
 
 	envClusterName        = "YANDEX_CLUSTER_NAME"
 	envRouteTableID       = "YANDEX_CLOUD_ROUTE_TABLE_ID"
@@ -166,6 +174,101 @@ func NewCloud(config CloudConfig, api *yapi.YandexCloudAPI) *Cloud {
 	}
 }
 
+func nodeTargetGroupAnnotationChanged(oldObj, newObj interface{}) bool {
+	oldNode, oldOK := oldObj.(*corev1.Node)
+	newNode, newOK := newObj.(*corev1.Node)
+	return oldOK && newOK &&
+		oldNode.Annotations[customTargetGroupNamePrefixAnnotation] != newNode.Annotations[customTargetGroupNamePrefixAnnotation]
+}
+
+func nodeEligibleForLoadBalancer(node *corev1.Node) bool {
+	if !node.DeletionTimestamp.IsZero() {
+		return false
+	}
+	if _, excluded := node.Labels[corev1.LabelNodeExcludeBalancers]; excluded {
+		return false
+	}
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == "ToBeDeletedByClusterAutoscaler" {
+			return false
+		}
+	}
+	return true
+}
+
+func (yc *Cloud) syncTargetGroupsAfterNodeUpdate(ctx context.Context) error {
+	services, err := yc.nodeTargetGroupSyncer.serviceLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list Services after target group annotation update: %w", err)
+	}
+	activeLoadBalancerExists := false
+	for _, service := range services {
+		if service.Spec.Type == corev1.ServiceTypeLoadBalancer && service.DeletionTimestamp == nil {
+			activeLoadBalancerExists = true
+			break
+		}
+	}
+	if !activeLoadBalancerExists {
+		return nil
+	}
+
+	nodes, err := yc.nodeLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list Nodes after target group annotation update: %w", err)
+	}
+
+	eligibleNodes := make([]*corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if nodeEligibleForLoadBalancer(node) {
+			eligibleNodes = append(eligibleNodes, node)
+		}
+	}
+	return yc.nodeTargetGroupSyncer.SyncTGs(ctx, eligibleNodes)
+}
+
+func processNextTargetGroupSync(
+	ctx context.Context,
+	queue workqueue.TypedRateLimitingInterface[string],
+	syncFn func(context.Context) error,
+) bool {
+	key, shutdown := queue.Get()
+	if shutdown {
+		return false
+	}
+	defer queue.Done(key)
+
+	syncCtx, cancel := context.WithTimeout(ctx, targetGroupSyncTimeout)
+	err := syncFn(syncCtx)
+	cancel()
+
+	if err == nil {
+		queue.Forget(key)
+		return true
+	}
+	if ctx.Err() != nil {
+		queue.Forget(key)
+		return true
+	}
+	if queue.NumRequeues(key) < targetGroupSyncMaxRetries-1 {
+		log.Printf("failed to synchronize target groups after Node annotation update, retrying: %s", err)
+		queue.AddRateLimited(key)
+		return true
+	}
+
+	queue.Forget(key)
+	log.Printf("failed to synchronize target groups after Node annotation update after %d attempts: %s", targetGroupSyncMaxRetries, err)
+	return true
+}
+
+func runTargetGroupSyncWorker(
+	ctx context.Context,
+	queue workqueue.TypedRateLimitingInterface[string],
+	syncFn func(context.Context) error,
+) {
+	for processNextTargetGroupSync(ctx, queue, syncFn) {
+	}
+}
+
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
 func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
 	clientset := clientBuilder.ClientOrDie("cloud-controller-manager")
@@ -181,7 +284,6 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	}
 
 	yc.nodeLister = nodeInformer.Lister()
-
 	go serviceInformer.Informer().Run(stop)
 	go nodeInformer.Informer().Run(stop)
 
@@ -190,6 +292,23 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 	}
 	if !cache.WaitForCacheSync(stop, nodeInformer.Informer().HasSynced) {
 		log.Fatal("Timed out waiting for caches to sync")
+	}
+
+	targetGroupSyncContext := wait.ContextForChannel(stop)
+	targetGroupSyncQueue := workqueue.NewTypedRateLimitingQueue(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 8*time.Second),
+	)
+	context.AfterFunc(targetGroupSyncContext, targetGroupSyncQueue.ShutDown)
+	go runTargetGroupSyncWorker(targetGroupSyncContext, targetGroupSyncQueue, yc.syncTargetGroupsAfterNodeUpdate)
+
+	if _, err := nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			if nodeTargetGroupAnnotationChanged(oldObj, newObj) {
+				targetGroupSyncQueue.Add(targetGroupSyncKey)
+			}
+		},
+	}); err != nil {
+		log.Fatalf("failed to register Node target group annotation handler: %s", err)
 	}
 }
 

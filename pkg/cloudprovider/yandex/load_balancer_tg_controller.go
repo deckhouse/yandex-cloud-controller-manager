@@ -67,9 +67,14 @@ func (ntgs *NodeTargetGroupSyncer) SyncTGs(ctx context.Context, nodes []*corev1.
 
 type tgNameToTargetMap map[string][]*loadbalancer.Target
 
-func fromNodeToInterfaceSlice(nodes []*corev1.Node) (ret []interface{}) {
+func nodeTargetGroupSyncState(nodes []*corev1.Node) (ret []interface{}) {
 	for _, node := range nodes {
-		ret = append(ret, node.Name)
+		ret = append(ret, fmt.Sprintf(
+			"%s\x00%s\x00%s",
+			node.Name,
+			node.Spec.ProviderID,
+			node.Annotations[customTargetGroupNamePrefixAnnotation],
+		))
 	}
 
 	return
@@ -109,7 +114,7 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return nil
 	}
 
-	newSet := mapset.NewSetFromSlice(fromNodeToInterfaceSlice(nodes))
+	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(nodes))
 	if ntgs.lastVisitedNodes.Equal(newSet) {
 		return nil
 	}
@@ -141,11 +146,8 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return fmt.Errorf("failed to construct tgNameToTargetMap: %s", err)
 	}
 
-	for tgName, targets := range mapping {
-		_, err := ntgs.cloud.yandexService.LbSvc.CreateOrUpdateTG(ctx, tgName, targets)
-		if err != nil {
-			return err
-		}
+	if err := ntgs.cloud.yandexService.LbSvc.ReconcileTargetGroups(ctx, ntgs.cloud.config.ClusterName, mapping); err != nil {
+		return err
 	}
 
 	ntgs.lastVisitedNodes = newSet
