@@ -8,7 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/workqueue"
 
 	mapset "github.com/deckarep/golang-set"
 )
@@ -72,35 +72,93 @@ func TestNodeEligibleForLoadBalancer(t *testing.T) {
 	}
 }
 
-func TestRetryTargetGroupSync(t *testing.T) {
+func newTestTargetGroupSyncQueue() workqueue.TypedRateLimitingInterface[string] {
+	return workqueue.NewTypedRateLimitingQueue(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Nanosecond, time.Nanosecond),
+	)
+}
+
+func TestTargetGroupSyncWorkerRetriesUntilSuccess(t *testing.T) {
+	queue := newTestTargetGroupSyncQueue()
+	queue.Add(targetGroupSyncKey)
+
 	attempts := 0
-	err := retryTargetGroupSync(context.Background(), wait.Backoff{Duration: time.Millisecond, Steps: 3}, func(context.Context) error {
+	runTargetGroupSyncWorker(context.Background(), queue, func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errors.New("temporary error")
 		}
+		queue.ShutDown()
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("retry target group sync: %v", err)
-	}
+
 	if attempts != 3 {
 		t.Fatalf("sync attempts = %d, want 3", attempts)
 	}
 }
 
-func TestRetryTargetGroupSyncCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+func TestTargetGroupSyncWorkerCoalescesEvents(t *testing.T) {
+	queue := newTestTargetGroupSyncQueue()
+	queue.Add(targetGroupSyncKey)
+
 	attempts := 0
-	err := retryTargetGroupSync(ctx, wait.Backoff{Duration: time.Hour, Steps: 3}, func(context.Context) error {
+	runTargetGroupSyncWorker(context.Background(), queue, func(context.Context) error {
 		attempts++
-		cancel()
-		return errors.New("temporary error")
+		if attempts == 1 {
+			for i := 0; i < 10; i++ {
+				queue.Add(targetGroupSyncKey)
+			}
+			return nil
+		}
+		queue.ShutDown()
+		return nil
 	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("retry target group sync error = %v, want context.Canceled", err)
+
+	if attempts != 2 {
+		t.Fatalf("sync attempts = %d, want 2", attempts)
 	}
-	if attempts != 1 {
-		t.Fatalf("sync attempts = %d, want 1", attempts)
+}
+
+func TestTargetGroupSyncWorkerStopsAfterMaxRetries(t *testing.T) {
+	queue := newTestTargetGroupSyncQueue()
+	queue.Add(targetGroupSyncKey)
+
+	attempts := 0
+	runTargetGroupSyncWorker(context.Background(), queue, func(context.Context) error {
+		attempts++
+		if attempts == targetGroupSyncMaxRetries {
+			queue.ShutDown()
+		}
+		return errors.New("persistent error")
+	})
+
+	if attempts != targetGroupSyncMaxRetries {
+		t.Fatalf("sync attempts = %d, want %d", attempts, targetGroupSyncMaxRetries)
+	}
+}
+
+func TestTargetGroupSyncWorkerStopsOnContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	queue := newTestTargetGroupSyncQueue()
+	context.AfterFunc(ctx, queue.ShutDown)
+	queue.Add(targetGroupSyncKey)
+
+	started := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runTargetGroupSyncWorker(ctx, queue, func(ctx context.Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+	}()
+
+	<-started
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("target group sync worker did not stop after context cancellation")
 	}
 }

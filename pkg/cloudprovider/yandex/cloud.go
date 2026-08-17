@@ -8,13 +8,13 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/deckhouse/yandex-cloud-controller-manager/pkg/yapi"
 
@@ -32,8 +32,10 @@ import (
 )
 
 const (
-	providerName           = "yandex"
-	targetGroupSyncTimeout = 10 * time.Minute
+	providerName              = "yandex"
+	targetGroupSyncKey        = "target-groups"
+	targetGroupSyncMaxRetries = 5
+	targetGroupSyncTimeout    = 10 * time.Minute
 
 	envClusterName        = "YANDEX_CLUSTER_NAME"
 	envRouteTableID       = "YANDEX_CLOUD_ROUTE_TABLE_ID"
@@ -68,10 +70,7 @@ type Cloud struct {
 	nodeTargetGroupSyncer *NodeTargetGroupSyncer
 	config                CloudConfig
 
-	nodeLister             v1.NodeLister
-	targetGroupSyncContext context.Context
-
-	nodeUpdateSyncLock sync.Mutex
+	nodeLister v1.NodeLister
 }
 
 func init() {
@@ -197,31 +196,10 @@ func nodeEligibleForLoadBalancer(node *corev1.Node) bool {
 	return true
 }
 
-func retryTargetGroupSync(ctx context.Context, backoff wait.Backoff, syncFn func(context.Context) error) error {
-	var lastErr error
-	if err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
-		lastErr = syncFn(ctx)
-		return lastErr == nil, nil
-	}); err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		if lastErr != nil {
-			return lastErr
-		}
-		return err
-	}
-	return nil
-}
-
-func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
-	yc.nodeUpdateSyncLock.Lock()
-	defer yc.nodeUpdateSyncLock.Unlock()
-
+func (yc *Cloud) syncTargetGroupsAfterNodeUpdate(ctx context.Context) error {
 	services, err := yc.nodeTargetGroupSyncer.serviceLister.List(labels.Everything())
 	if err != nil {
-		log.Printf("failed to list Services after target group annotation update: %s", err)
-		return
+		return fmt.Errorf("failed to list Services after target group annotation update: %w", err)
 	}
 	activeLoadBalancerExists := false
 	for _, service := range services {
@@ -231,13 +209,12 @@ func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 		}
 	}
 	if !activeLoadBalancerExists {
-		return
+		return nil
 	}
 
 	nodes, err := yc.nodeLister.List(labels.Everything())
 	if err != nil {
-		log.Printf("failed to list Nodes after target group annotation update: %s", err)
-		return
+		return fmt.Errorf("failed to list Nodes after target group annotation update: %w", err)
 	}
 
 	eligibleNodes := make([]*corev1.Node, 0, len(nodes))
@@ -246,25 +223,55 @@ func (yc *Cloud) syncTargetGroupsAfterNodeUpdate() {
 			eligibleNodes = append(eligibleNodes, node)
 		}
 	}
-	backoff := wait.Backoff{Duration: time.Second, Factor: 2, Steps: 5}
-	ctx, cancel := context.WithTimeout(yc.targetGroupSyncContext, targetGroupSyncTimeout)
-	defer cancel()
-	if err := retryTargetGroupSync(ctx, backoff, func(ctx context.Context) error {
-		return yc.nodeTargetGroupSyncer.SyncTGs(ctx, eligibleNodes)
-	}); err != nil {
-		log.Printf("failed to synchronize target groups after Node annotation update: %s", err)
+	return yc.nodeTargetGroupSyncer.SyncTGs(ctx, eligibleNodes)
+}
+
+func processNextTargetGroupSync(
+	ctx context.Context,
+	queue workqueue.TypedRateLimitingInterface[string],
+	syncFn func(context.Context) error,
+) bool {
+	key, shutdown := queue.Get()
+	if shutdown {
+		return false
+	}
+	defer queue.Done(key)
+
+	syncCtx, cancel := context.WithTimeout(ctx, targetGroupSyncTimeout)
+	err := syncFn(syncCtx)
+	cancel()
+
+	if err == nil {
+		queue.Forget(key)
+		return true
+	}
+	if ctx.Err() != nil {
+		queue.Forget(key)
+		return true
+	}
+	if queue.NumRequeues(key) < targetGroupSyncMaxRetries-1 {
+		log.Printf("failed to synchronize target groups after Node annotation update, retrying: %s", err)
+		queue.AddRateLimited(key)
+		return true
+	}
+
+	queue.Forget(key)
+	log.Printf("failed to synchronize target groups after Node annotation update after %d attempts: %s", targetGroupSyncMaxRetries, err)
+	return true
+}
+
+func runTargetGroupSyncWorker(
+	ctx context.Context,
+	queue workqueue.TypedRateLimitingInterface[string],
+	syncFn func(context.Context) error,
+) {
+	for processNextTargetGroupSync(ctx, queue, syncFn) {
 	}
 }
 
 // Initialize passes a Kubernetes clientBuilder interface to the cloud provider
 func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
 	clientset := clientBuilder.ClientOrDie("cloud-controller-manager")
-	targetGroupSyncContext, cancelTargetGroupSync := context.WithCancel(context.Background())
-	yc.targetGroupSyncContext = targetGroupSyncContext
-	go func() {
-		<-stop
-		cancelTargetGroupSync()
-	}()
 
 	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*30)
 	serviceInformer := informerFactory.Core().V1().Services()
@@ -287,10 +294,17 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 		log.Fatal("Timed out waiting for caches to sync")
 	}
 
+	targetGroupSyncContext := wait.ContextForChannel(stop)
+	targetGroupSyncQueue := workqueue.NewTypedRateLimitingQueue(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 8*time.Second),
+	)
+	context.AfterFunc(targetGroupSyncContext, targetGroupSyncQueue.ShutDown)
+	go runTargetGroupSyncWorker(targetGroupSyncContext, targetGroupSyncQueue, yc.syncTargetGroupsAfterNodeUpdate)
+
 	if _, err := nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if nodeTargetGroupAnnotationChanged(oldObj, newObj) {
-				go yc.syncTargetGroupsAfterNodeUpdate()
+				targetGroupSyncQueue.Add(targetGroupSyncKey)
 			}
 		},
 	}); err != nil {
