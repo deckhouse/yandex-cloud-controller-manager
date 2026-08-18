@@ -114,23 +114,34 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return nil
 	}
 
-	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(nodes))
+	eligibleNodes := make([]*corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Spec.ProviderID == "" {
+			klog.Warningf("node %s ProviderID is empty, skipping target group synchronization for this node", node.Name)
+			continue
+		}
+
+		if !strings.Contains(node.Spec.ProviderID, "yandex") {
+			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
+			continue
+		}
+
+		eligibleNodes = append(eligibleNodes, node)
+	}
+
+	if len(eligibleNodes) == 0 {
+		klog.Warning("no nodes with valid Yandex ProviderID to synchronize TGs with, skipping...")
+		return nil
+	}
+
+	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(eligibleNodes))
 	if ntgs.lastVisitedNodes.Equal(newSet) {
 		return nil
 	}
 
 	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
-	for _, node := range nodes {
-		if node.Spec.ProviderID == "" {
-			return errors.Errorf("node %s ProviderID is empty", node.Name)
-		}
-
-		if !(strings.Contains(node.Spec.ProviderID, "yandex")) {
-			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
-			continue
-		}
-
+	for _, node := range eligibleNodes {
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
 		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
 		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)

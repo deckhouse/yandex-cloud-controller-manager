@@ -162,3 +162,19 @@ func TestTargetGroupSyncWorkerStopsOnContextCancellation(t *testing.T) {
 		t.Fatal("target group sync worker did not stop after context cancellation")
 	}
 }
+
+func TestSynchronizeNodesWithTargetGroupsSkipsWhenAllProviderIDsAreEmpty(t *testing.T) {
+	lastVisitedNodes := mapset.NewSet("previous-node")
+	syncer := &NodeTargetGroupSyncer{lastVisitedNodes: lastVisitedNodes}
+	nodes := []*corev1.Node{
+		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-2"}},
+	}
+
+	if err := syncer.synchronizeNodesWithTargetGroups(context.Background(), nodes); err != nil {
+		t.Fatalf("expected synchronization to be skipped, got error: %v", err)
+	}
+	if !syncer.lastVisitedNodes.Equal(lastVisitedNodes) {
+		t.Fatal("expected last visited nodes cache to remain unchanged")
+	}
+}
