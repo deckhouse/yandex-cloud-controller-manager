@@ -223,7 +223,7 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		return nil, err
 	}
 	if tg == nil {
-		return nil, fmt.Errorf("TG %q does not exist yet", tgName)
+		return nil, fmt.Errorf("TG %q does not exist yet; it is only created for Nodes carrying a Yandex ProviderID, check that the Nodes backing this Service have one", tgName)
 	}
 
 	externalIP, err := yc.yandexService.LbSvc.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{

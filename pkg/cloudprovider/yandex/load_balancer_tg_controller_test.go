@@ -3,6 +3,8 @@ package yandex
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,5 +178,95 @@ func TestSynchronizeNodesWithTargetGroupsSkipsWhenAllProviderIDsAreEmpty(t *test
 	}
 	if !syncer.lastVisitedNodes.Equal(lastVisitedNodes) {
 		t.Fatal("expected last visited nodes cache to remain unchanged")
+	}
+}
+
+func TestPartitionNodesByProviderIDKeepsYandexNodesAlongsideSkippedOnes(t *testing.T) {
+	// A static Node deliberately comes first: an implementation that aborts on the first
+	// unusable Node instead of skipping it would drop the cloud Nodes that follow.
+	nodes := []*corev1.Node{
+		{ObjectMeta: metav1.ObjectMeta{Name: "static-node"}},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "cloud-node-1"},
+			Spec:       corev1.NodeSpec{ProviderID: "yandex://instance-1"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foreign-node"},
+			Spec:       corev1.NodeSpec{ProviderID: "aws:///eu-central-1a/i-1"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "deprecated-node"},
+			Spec:       corev1.NodeSpec{ProviderID: "yandex://folder/ru-central1-a/instance-3"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "cloud-node-2"},
+			Spec:       corev1.NodeSpec{ProviderID: "yandex://instance-2"},
+		},
+	}
+
+	yandexNodes, skipped := partitionNodesByProviderID(nodes)
+
+	yandexNames := make([]string, 0, len(yandexNodes))
+	for _, node := range yandexNodes {
+		yandexNames = append(yandexNames, node.Name)
+	}
+	expected := []string{"cloud-node-1", "deprecated-node", "cloud-node-2"}
+	if !reflect.DeepEqual(yandexNames, expected) {
+		t.Fatalf("expected Yandex Nodes %v, got %v", expected, yandexNames)
+	}
+
+	if len(skipped) != 2 {
+		t.Fatalf("expected 2 skipped Nodes, got %d: %v", len(skipped), skipped)
+	}
+	for _, want := range []string{"static-node", "foreign-node"} {
+		found := false
+		for _, reason := range skipped {
+			if strings.Contains(reason, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q to be reported as skipped, got %v", want, skipped)
+		}
+	}
+}
+
+func TestPartitionNodesByProviderIDRejectsForeignProviderIDMentioningYandex(t *testing.T) {
+	// A substring match on "yandex" would accept this Node. Since the Instance is then resolved
+	// by Node name, an unrelated VM sharing that name in the Yandex folder would be attached to
+	// the cluster's target group.
+	nodes := []*corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "impostor-node"},
+			Spec:       corev1.NodeSpec{ProviderID: "aws:///eu-central-1a/i-0yandex123"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "malformed-node"},
+			Spec:       corev1.NodeSpec{ProviderID: "yandex://"},
+		},
+	}
+
+	yandexNodes, skipped := partitionNodesByProviderID(nodes)
+	if len(yandexNodes) != 0 {
+		t.Fatalf("expected no Yandex Nodes, got %v", yandexNodes)
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("expected both Nodes to be reported as skipped, got %v", skipped)
+	}
+}
+
+func TestPartitionNodesByProviderIDReturnsNoNodesWhenProviderIDsAreEmpty(t *testing.T) {
+	nodes := []*corev1.Node{
+		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-2"}},
+	}
+
+	yandexNodes, skipped := partitionNodesByProviderID(nodes)
+	if len(yandexNodes) != 0 {
+		t.Fatalf("expected no Yandex Nodes, got %d", len(yandexNodes))
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("expected both Nodes to be reported as skipped, got %v", skipped)
 	}
 }

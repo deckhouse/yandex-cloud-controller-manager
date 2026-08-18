@@ -108,40 +108,66 @@ type instanceWithNodeInfo struct {
 	Node     *corev1.Node
 }
 
+// partitionNodesByProviderID splits Nodes into the ones that can be placed into a target group
+// and human-readable reasons for the ones that cannot. Nodes without a ProviderID are not an
+// error: a freshly registered Node has no ProviderID until the node controller assigns one, and
+// a cluster may legitimately mix cloud Nodes with static ones that never get a Yandex ProviderID.
+//
+// This is a different notion of eligibility from nodeEligibleForLoadBalancer, which filters on
+// Node state – deletion, exclusion label, autoscaler taint – rather than on the ProviderID.
+//
+// Filtering is silent: callers decide what to report, so that a steady-state cluster does not
+// repeat the same per-Node messages at default verbosity on every synchronization.
+func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Node, skipped []string) {
+	yandexNodes = make([]*corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Spec.ProviderID == "" {
+			skipped = append(skipped, fmt.Sprintf("%s (ProviderID is empty)", node.Name))
+			continue
+		}
+
+		// ParseProviderID anchors on the yandex:// scheme. A substring match would also accept a
+		// foreign ProviderID that merely happens to mention the provider name, and since the
+		// Instance is then looked up by Node name, that could attach an unrelated VM to the TG.
+		if _, _, err := ParseProviderID(node.Spec.ProviderID); err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s (%s)", node.Name, err))
+			continue
+		}
+
+		yandexNodes = append(yandexNodes, node)
+	}
+
+	return yandexNodes, skipped
+}
+
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
 		return nil
 	}
 
-	eligibleNodes := make([]*corev1.Node, 0, len(nodes))
-	for _, node := range nodes {
-		if node.Spec.ProviderID == "" {
-			klog.Warningf("node %s ProviderID is empty, skipping target group synchronization for this node", node.Name)
-			continue
-		}
-
-		if !strings.Contains(node.Spec.ProviderID, "yandex") {
-			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
-			continue
-		}
-
-		eligibleNodes = append(eligibleNodes, node)
-	}
-
-	if len(eligibleNodes) == 0 {
-		klog.Warning("no nodes with valid Yandex ProviderID to synchronize TGs with, skipping...")
+	yandexNodes, skippedNodes := partitionNodesByProviderID(nodes)
+	if len(yandexNodes) == 0 {
+		klog.Warningf("none of %d Nodes have a valid Yandex ProviderID, skipping TG synchronization: %s",
+			len(nodes), strings.Join(skippedNodes, "; "))
 		return nil
 	}
 
-	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(eligibleNodes))
+	// Reported before the cache check below: a Node being skipped is not reflected in
+	// lastVisitedNodes, so gating this on a changed Node set would hide it entirely.
+	if len(skippedNodes) > 0 {
+		klog.V(4).Infof("skipping %d of %d Nodes during TG synchronization: %s",
+			len(skippedNodes), len(nodes), strings.Join(skippedNodes, "; "))
+	}
+
+	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(yandexNodes))
 	if ntgs.lastVisitedNodes.Equal(newSet) {
 		return nil
 	}
 
 	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
-	for _, node := range eligibleNodes {
+	for _, node := range yandexNodes {
 		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
 		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
 		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
