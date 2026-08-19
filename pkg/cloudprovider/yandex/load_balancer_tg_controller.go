@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	corev1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+	cloudproviderapi "k8s.io/cloud-provider/api"
 
 	corev1listers "k8s.io/client-go/listers/core/v1"
 
@@ -30,7 +32,7 @@ type NodeTargetGroupSyncer struct {
 	cloud *Cloud
 
 	lastVisitedNodes mapset.Set
-	lastSkippedNodes mapset.Set
+	lastSkippedNodes string
 	serviceLister    corev1listers.ServiceLister
 
 	tgSyncLock sync.Mutex
@@ -99,7 +101,11 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 		return err
 	}
 
+	// Both caches describe the target groups that were just removed, so neither may outlive them:
+	// keeping lastSkippedNodes would swallow the warning about a Node left out of the target groups
+	// the next time a LoadBalancer Service appears.
 	ntgs.lastVisitedNodes.Clear()
+	ntgs.lastSkippedNodes = ""
 
 	return nil
 }
@@ -107,6 +113,16 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 type instanceWithNodeInfo struct {
 	Instance *compute.Instance
 	Node     *corev1.Node
+}
+
+func hasTaint(node *corev1.Node, key string) bool {
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == key {
+			return true
+		}
+	}
+
+	return false
 }
 
 // partitionNodesByProviderID splits Nodes into the ones that can be placed into a target group
@@ -123,7 +139,20 @@ func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Nod
 	yandexNodes = make([]*corev1.Node, 0, len(nodes))
 	for _, node := range nodes {
 		if node.Spec.ProviderID == "" {
-			skipped = append(skipped, fmt.Sprintf("%s (ProviderID is empty)", node.Name))
+			// Two very different causes hide behind an empty ProviderID, and the taint tells them
+			// apart for free. With the taint, kubelet did hand the Node to a cloud provider and
+			// cloud-node has simply not initialized it yet, which normally takes seconds. Without
+			// it, the Node was never offered to a cloud provider at all: either a genuine static
+			// Node, or a cloud VM whose kubelet is missing --cloud-provider=external – and in that
+			// second case the Node stays out of the target groups until that is fixed, so saying
+			// which of the two it is turns a silent capacity loss into something actionable.
+			reason := "awaiting cloud-node initialization"
+			if !hasTaint(node, cloudproviderapi.TaintExternalCloudProvider) {
+				reason = fmt.Sprintf("no %s taint, never handed to a cloud provider",
+					cloudproviderapi.TaintExternalCloudProvider)
+			}
+			skipped = append(skipped, fmt.Sprintf("%s (%s)", node.Name, reason))
+
 			continue
 		}
 
@@ -141,25 +170,24 @@ func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Nod
 	return yandexNodes, skipped
 }
 
-// skippedNodesChanged records the Nodes left out of the target groups and reports whether that set
-// differs from the previous synchronization. Skipped Nodes have to be visible at default verbosity
-// – an operator must be able to see that a Node dropped out of the target groups – but a cluster
-// with static Nodes would otherwise repeat the same warning on every synchronization forever.
+// newlySkippedNodes returns the Nodes left out of the target groups rendered for a log line, or an
+// empty string when there is nothing new to report. Skipped Nodes have to be visible at default
+// verbosity – an operator must be able to see that a Node dropped out of the target groups – but a
+// cluster with static Nodes would otherwise repeat the same warning on every synchronization.
 //
-// Node order from the informer is not stable, so this compares sets rather than slices, and a nil
-// lastSkippedNodes counts as changed so the first observation is always reported.
-func (ntgs *NodeTargetGroupSyncer) skippedNodesChanged(skipped []string) bool {
-	current := mapset.NewSet()
-	for _, reason := range skipped {
-		current.Add(reason)
-	}
+// Sorting does double duty: Node order from the informer is not stable, so unsorted reasons would
+// compare unequal at random, and it keeps the reported line itself stable between reports. The
+// argument is a freshly built slice, so sorting it in place is safe.
+func (ntgs *NodeTargetGroupSyncer) newlySkippedNodes(skipped []string) string {
+	sort.Strings(skipped)
 
-	if ntgs.lastSkippedNodes != nil && ntgs.lastSkippedNodes.Equal(current) {
-		return false
+	current := strings.Join(skipped, "; ")
+	if current == ntgs.lastSkippedNodes {
+		return ""
 	}
 	ntgs.lastSkippedNodes = current
 
-	return true
+	return current
 }
 
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
@@ -172,9 +200,9 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 
 	// Reported before the lastVisitedNodes check below: a skipped Node never reaches that cache,
 	// so gating this on a changed Node set would hide it entirely.
-	if ntgs.skippedNodesChanged(skippedNodes) && len(skippedNodes) > 0 {
+	if reasons := ntgs.newlySkippedNodes(skippedNodes); reasons != "" {
 		klog.Warningf("skipping %d of %d Nodes during TG synchronization: %s",
-			len(skippedNodes), len(nodes), strings.Join(skippedNodes, "; "))
+			len(skippedNodes), len(nodes), reasons)
 	}
 
 	if len(yandexNodes) == 0 {

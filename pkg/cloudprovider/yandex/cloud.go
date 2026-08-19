@@ -188,10 +188,8 @@ func nodeEligibleForLoadBalancer(node *corev1.Node) bool {
 	if _, excluded := node.Labels[corev1.LabelNodeExcludeBalancers]; excluded {
 		return false
 	}
-	for _, taint := range node.Spec.Taints {
-		if taint.Key == "ToBeDeletedByClusterAutoscaler" {
-			return false
-		}
+	if hasTaint(node, "ToBeDeletedByClusterAutoscaler") {
+		return false
 	}
 	return true
 }
@@ -281,7 +279,6 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 		cloud:            yc,
 		serviceLister:    serviceInformer.Lister(),
 		lastVisitedNodes: mapset.NewSet(),
-		lastSkippedNodes: mapset.NewSet(),
 	}
 
 	yc.nodeLister = nodeInformer.Lister()
