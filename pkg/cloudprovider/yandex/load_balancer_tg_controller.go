@@ -16,8 +16,10 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 
 	mapset "github.com/deckarep/golang-set"
@@ -31,6 +33,7 @@ type NodeTargetGroupSyncer struct {
 
 	lastVisitedNodes mapset.Set
 	serviceLister    corev1listers.ServiceLister
+	nodeClient       corev1client.NodeInterface
 
 	tgSyncLock sync.Mutex
 }
@@ -122,20 +125,14 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
 	for _, node := range nodes {
-		if node.Spec.ProviderID == "" {
-			return errors.Errorf("node %s ProviderID is empty", node.Name)
+		instance, providerID, err := ntgs.getInstanceAndEnsureProviderID(ctx, node)
+		if err != nil {
+			return err
 		}
 
-		if !(strings.Contains(node.Spec.ProviderID, "yandex")) {
-			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
+		if !(strings.Contains(providerID, "yandex")) {
+			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, providerID)
 			continue
-		}
-
-		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
-		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
-		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
-		if err != nil || instance == nil {
-			return fmt.Errorf("failed to find Instance by its name: %s", err)
 		}
 
 		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
@@ -153,6 +150,32 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	ntgs.lastVisitedNodes = newSet
 
 	return nil
+}
+
+func (ntgs *NodeTargetGroupSyncer) getInstanceAndEnsureProviderID(ctx context.Context, node *corev1.Node) (*compute.Instance, string, error) {
+	nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
+	log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
+	instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
+	if err != nil || instance == nil {
+		return nil, "", fmt.Errorf("failed to find Instance by its name: %s", err)
+	}
+
+	providerID := node.Spec.ProviderID
+	if providerID != "" {
+		return instance, providerID, nil
+	}
+
+	providerID = fmt.Sprintf("%s://%s", providerName, instance.Id)
+	patch := []byte(fmt.Sprintf(`{"spec":{"providerID":"%s"}}`, providerID))
+
+	if _, err := ntgs.nodeClient.Patch(ctx, node.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		return nil, "", errors.Wrapf(err, "failed to patch ProviderID for node %s", node.Name)
+	}
+
+	node.Spec.ProviderID = providerID
+	log.Printf("Patched ProviderID for node %s to %s", node.Name, providerID)
+
+	return instance, providerID, nil
 }
 
 func (ntgs *NodeTargetGroupSyncer) constructTgNameToTargetMap(ctx context.Context, instances []*instanceWithNodeInfo) (tgNameToTargetMap, error) {
