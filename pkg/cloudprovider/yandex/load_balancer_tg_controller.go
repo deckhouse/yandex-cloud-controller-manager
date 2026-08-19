@@ -16,7 +16,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
 
 	corev1listers "k8s.io/client-go/listers/core/v1"
 
@@ -30,6 +30,7 @@ type NodeTargetGroupSyncer struct {
 	cloud *Cloud
 
 	lastVisitedNodes mapset.Set
+	lastSkippedNodes mapset.Set
 	serviceLister    corev1listers.ServiceLister
 
 	tgSyncLock sync.Mutex
@@ -126,9 +127,9 @@ func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Nod
 			continue
 		}
 
-		// ParseProviderID anchors on the yandex:// scheme. A substring match would also accept a
-		// foreign ProviderID that merely happens to mention the provider name, and since the
-		// Instance is then looked up by Node name, that could attach an unrelated VM to the TG.
+		// ParseProviderID anchors on the yandex:// scheme, unlike a substring match, which would
+		// also accept a foreign ProviderID that merely mentions the provider name. Its result is
+		// what the Instance lookup consumes, so an unparsable value has to be rejected here.
 		if _, _, err := ParseProviderID(node.Spec.ProviderID); err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s (%s)", node.Name, err))
 			continue
@@ -140,6 +141,27 @@ func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Nod
 	return yandexNodes, skipped
 }
 
+// skippedNodesChanged records the Nodes left out of the target groups and reports whether that set
+// differs from the previous synchronization. Skipped Nodes have to be visible at default verbosity
+// – an operator must be able to see that a Node dropped out of the target groups – but a cluster
+// with static Nodes would otherwise repeat the same warning on every synchronization forever.
+//
+// Node order from the informer is not stable, so this compares sets rather than slices, and a nil
+// lastSkippedNodes counts as changed so the first observation is always reported.
+func (ntgs *NodeTargetGroupSyncer) skippedNodesChanged(skipped []string) bool {
+	current := mapset.NewSet()
+	for _, reason := range skipped {
+		current.Add(reason)
+	}
+
+	if ntgs.lastSkippedNodes != nil && ntgs.lastSkippedNodes.Equal(current) {
+		return false
+	}
+	ntgs.lastSkippedNodes = current
+
+	return true
+}
+
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
@@ -147,17 +169,17 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 	}
 
 	yandexNodes, skippedNodes := partitionNodesByProviderID(nodes)
-	if len(yandexNodes) == 0 {
-		klog.Warningf("none of %d Nodes have a valid Yandex ProviderID, skipping TG synchronization: %s",
-			len(nodes), strings.Join(skippedNodes, "; "))
-		return nil
+
+	// Reported before the lastVisitedNodes check below: a skipped Node never reaches that cache,
+	// so gating this on a changed Node set would hide it entirely.
+	if ntgs.skippedNodesChanged(skippedNodes) && len(skippedNodes) > 0 {
+		klog.Warningf("skipping %d of %d Nodes during TG synchronization: %s",
+			len(skippedNodes), len(nodes), strings.Join(skippedNodes, "; "))
 	}
 
-	// Reported before the cache check below: a Node being skipped is not reflected in
-	// lastVisitedNodes, so gating this on a changed Node set would hide it entirely.
-	if len(skippedNodes) > 0 {
-		klog.V(4).Infof("skipping %d of %d Nodes during TG synchronization: %s",
-			len(skippedNodes), len(nodes), strings.Join(skippedNodes, "; "))
+	if len(yandexNodes) == 0 {
+		klog.Warningf("none of %d Nodes have a valid Yandex ProviderID, skipping TG synchronization", len(nodes))
+		return nil
 	}
 
 	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(yandexNodes))
@@ -165,14 +187,22 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return nil
 	}
 
-	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
 	for _, node := range yandexNodes {
-		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
-		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
-		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
-		if err != nil || instance == nil {
-			return fmt.Errorf("failed to find Instance by its name: %s", err)
+		// getInstanceByProviderID resolves a modern yandex://<id> ProviderID with a single Get by
+		// ID instead of listing the folder by Node name, which also means a Node is never matched
+		// to an unrelated Instance that happens to share its name.
+		instance, err := ntgs.cloud.getInstanceByProviderID(ctx, node.Spec.ProviderID)
+		if err != nil {
+			// A deleted Instance must not abort synchronization for every other Node, the same way
+			// an empty ProviderID must not. Network and server-side failures still do. The state is
+			// self-clearing: cloud-node-lifecycle removes Nodes whose Instance no longer exists.
+			if errors.Is(err, cloudprovider.InstanceNotFound) {
+				klog.Warningf("Instance for Node %s (%s) no longer exists, leaving it out of the target groups",
+					node.Name, node.Spec.ProviderID)
+				continue
+			}
+			return fmt.Errorf("failed to find Instance for Node %s: %w", node.Name, err)
 		}
 
 		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
@@ -187,7 +217,14 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return err
 	}
 
-	ntgs.lastVisitedNodes = newSet
+	// The set that was achieved, not the one that was desired: a Node left out because its Instance
+	// is gone has to be retried on the next synchronization rather than pinned until an unrelated
+	// change makes the desired set differ again.
+	syncedNodes := make([]*corev1.Node, 0, len(instances))
+	for _, instance := range instances {
+		syncedNodes = append(syncedNodes, instance.Node)
+	}
+	ntgs.lastVisitedNodes = mapset.NewSetFromSlice(nodeTargetGroupSyncState(syncedNodes))
 
 	return nil
 }

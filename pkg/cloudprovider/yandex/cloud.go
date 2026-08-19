@@ -281,6 +281,7 @@ func (yc *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 		cloud:            yc,
 		serviceLister:    serviceInformer.Lister(),
 		lastVisitedNodes: mapset.NewSet(),
+		lastSkippedNodes: mapset.NewSet(),
 	}
 
 	yc.nodeLister = nodeInformer.Lister()

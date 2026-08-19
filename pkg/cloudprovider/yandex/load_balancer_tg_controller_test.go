@@ -270,3 +270,29 @@ func TestPartitionNodesByProviderIDReturnsNoNodesWhenProviderIDsAreEmpty(t *test
 		t.Fatalf("expected both Nodes to be reported as skipped, got %v", skipped)
 	}
 }
+
+func TestSkippedNodesChangedReportsOnlyOnChange(t *testing.T) {
+	syncer := &NodeTargetGroupSyncer{}
+	first := []string{"static-1 (ProviderID is empty)", "static-2 (ProviderID is empty)"}
+
+	if !syncer.skippedNodesChanged(first) {
+		t.Fatal("the first observation of skipped Nodes must be reported")
+	}
+	// Node listings from the informer are not ordered, so a reshuffled slice is the same set and
+	// must not produce another warning.
+	if syncer.skippedNodesChanged([]string{first[1], first[0]}) {
+		t.Fatal("an unchanged set of skipped Nodes must not be reported again")
+	}
+
+	grown := []string{first[0], first[1], "static-3 (ProviderID is empty)"}
+	if !syncer.skippedNodesChanged(grown) {
+		t.Fatal("a newly skipped Node must be reported")
+	}
+
+	if !syncer.skippedNodesChanged(nil) {
+		t.Fatal("Nodes no longer being skipped must be reported")
+	}
+	if syncer.skippedNodesChanged(nil) {
+		t.Fatal("an empty set of skipped Nodes must not be reported twice")
+	}
+}
