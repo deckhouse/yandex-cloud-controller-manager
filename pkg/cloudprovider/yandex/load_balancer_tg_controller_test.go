@@ -8,9 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
+	"google.golang.org/grpc"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
+	cloudproviderapi "k8s.io/cloud-provider/api"
+
+	"github.com/deckhouse/yandex-cloud-controller-manager/pkg/yapi"
 
 	mapset "github.com/deckarep/golang-set"
 )
@@ -215,20 +220,9 @@ func TestPartitionNodesByProviderIDKeepsYandexNodesAlongsideSkippedOnes(t *testi
 		t.Fatalf("expected Yandex Nodes %v, got %v", expected, yandexNames)
 	}
 
-	if len(skipped) != 2 {
-		t.Fatalf("expected 2 skipped Nodes, got %d: %v", len(skipped), skipped)
-	}
-	for _, want := range []string{"static-node", "foreign-node"} {
-		found := false
-		for _, reason := range skipped {
-			if strings.Contains(reason, want) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q to be reported as skipped, got %v", want, skipped)
-		}
+	// Reasons keep Node order, so the two skipped Nodes are pinned positionally.
+	if len(skipped) != 2 || !strings.Contains(skipped[0], "static-node") || !strings.Contains(skipped[1], "foreign-node") {
+		t.Fatalf("expected static-node and foreign-node to be reported as skipped, got %v", skipped)
 	}
 }
 
@@ -256,10 +250,52 @@ func TestPartitionNodesByProviderIDRejectsForeignProviderIDMentioningYandex(t *t
 	}
 }
 
-func TestPartitionNodesByProviderIDReturnsNoNodesWhenProviderIDsAreEmpty(t *testing.T) {
+func TestNewlySkippedNodesReportsOnlyOnChange(t *testing.T) {
+	syncer := &NodeTargetGroupSyncer{}
+	first := []string{"static-2 (ProviderID is empty)", "static-1 (ProviderID is empty)"}
+
+	reported := syncer.newlySkippedNodes(first)
+	if reported == "" {
+		t.Fatal("the first observation of skipped Nodes must be reported")
+	}
+	// Reported reasons are sorted, so the log line stays stable between reports even though the
+	// informer hands Nodes over in no particular order.
+	if reported != "static-1 (ProviderID is empty); static-2 (ProviderID is empty)" {
+		t.Fatalf("expected the reported reasons to be sorted, got %q", reported)
+	}
+
+	// Same Nodes in a different order are the same set and must not be reported again.
+	if again := syncer.newlySkippedNodes([]string{first[1], first[0]}); again != "" {
+		t.Fatalf("an unchanged set of skipped Nodes must not be reported again, got %q", again)
+	}
+
+	grown := []string{first[0], first[1], "static-3 (ProviderID is empty)"}
+	if syncer.newlySkippedNodes(grown) == "" {
+		t.Fatal("a newly skipped Node must be reported")
+	}
+
+	// Nothing skipped any more: the state has to be cleared so a later skip is reported again,
+	// while the transition itself has nothing to log.
+	if empty := syncer.newlySkippedNodes(nil); empty != "" {
+		t.Fatalf("an empty set of skipped Nodes has nothing to report, got %q", empty)
+	}
+	if syncer.newlySkippedNodes(grown) == "" {
+		t.Fatal("skipped Nodes returning after an empty set must be reported again")
+	}
+}
+
+func TestPartitionNodesByProviderIDDistinguishesUninitializedFromStaticNodes(t *testing.T) {
+	// PR #195 hit this in production: a Node reaching reconciliation with an empty ProviderID.
+	// Whose problem it is depends entirely on the taint, so the reasons have to differ.
 	nodes := []*corev1.Node{
-		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-1"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "stale-node-2"}},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "awaiting-init"},
+			Spec: corev1.NodeSpec{Taints: []corev1.Taint{{
+				Key:    cloudproviderapi.TaintExternalCloudProvider,
+				Effect: corev1.TaintEffectNoSchedule,
+			}}},
+		},
+		{ObjectMeta: metav1.ObjectMeta{Name: "never-offered"}},
 	}
 
 	yandexNodes, skipped := partitionNodesByProviderID(nodes)
@@ -269,30 +305,58 @@ func TestPartitionNodesByProviderIDReturnsNoNodesWhenProviderIDsAreEmpty(t *test
 	if len(skipped) != 2 {
 		t.Fatalf("expected both Nodes to be reported as skipped, got %v", skipped)
 	}
+
+	if !strings.Contains(skipped[0], "awaiting cloud-node initialization") {
+		t.Errorf("a Node carrying the %s taint must be reported as awaiting initialization, got %q",
+			cloudproviderapi.TaintExternalCloudProvider, skipped[0])
+	}
+	if !strings.Contains(skipped[1], "never handed to a cloud provider") {
+		t.Errorf("a Node without the taint must be reported as never handed to a cloud provider, got %q", skipped[1])
+	}
+	// The two causes need different remediation, so they must not collapse into one message.
+	if skipped[0] == skipped[1] {
+		t.Fatal("the two causes of an empty ProviderID must produce different reasons")
+	}
 }
 
-func TestSkippedNodesChangedReportsOnlyOnChange(t *testing.T) {
-	syncer := &NodeTargetGroupSyncer{}
-	first := []string{"static-1 (ProviderID is empty)", "static-2 (ProviderID is empty)"}
+// fakeEmptyTargetGroupClient reports no target groups, which is enough to walk
+// cleanUpTargetGroups down to the cache reset without any operations to wait on.
+type fakeEmptyTargetGroupClient struct {
+	loadbalancer.TargetGroupServiceClient
+}
 
-	if !syncer.skippedNodesChanged(first) {
+func (fakeEmptyTargetGroupClient) List(_ context.Context, _ *loadbalancer.ListTargetGroupsRequest, _ ...grpc.CallOption) (*loadbalancer.ListTargetGroupsResponse, error) {
+	return &loadbalancer.ListTargetGroupsResponse{}, nil
+}
+
+func TestCleanUpTargetGroupsResetsSkippedNodeReport(t *testing.T) {
+	// Both caches describe target groups that cleanUpTargetGroups has just removed. If the skipped
+	// Node report survives them, the next LoadBalancer Service is created without any warning that
+	// a Node is being left out of its target groups.
+	syncer := &NodeTargetGroupSyncer{
+		cloud: &Cloud{
+			config: CloudConfig{ClusterName: "test-cluster"},
+			yandexService: &yapi.YandexCloudAPI{
+				LbSvc: yapi.NewLoadBalancerService(nil, fakeEmptyTargetGroupClient{}, &yapi.CloudContext{FolderID: "test-folder"}),
+			},
+		},
+		lastVisitedNodes: mapset.NewSet(),
+	}
+
+	skipped := []string{"static-1 (never handed to a cloud provider)"}
+	if syncer.newlySkippedNodes(skipped) == "" {
 		t.Fatal("the first observation of skipped Nodes must be reported")
 	}
-	// Node listings from the informer are not ordered, so a reshuffled slice is the same set and
-	// must not produce another warning.
-	if syncer.skippedNodesChanged([]string{first[1], first[0]}) {
-		t.Fatal("an unchanged set of skipped Nodes must not be reported again")
+	syncer.lastVisitedNodes.Add("stale")
+
+	if err := syncer.cleanUpTargetGroups(context.Background()); err != nil {
+		t.Fatalf("cleanUpTargetGroups: %v", err)
 	}
 
-	grown := []string{first[0], first[1], "static-3 (ProviderID is empty)"}
-	if !syncer.skippedNodesChanged(grown) {
-		t.Fatal("a newly skipped Node must be reported")
+	if syncer.lastVisitedNodes.Cardinality() != 0 {
+		t.Errorf("expected the visited Node cache to be cleared, got %v", syncer.lastVisitedNodes)
 	}
-
-	if !syncer.skippedNodesChanged(nil) {
-		t.Fatal("Nodes no longer being skipped must be reported")
-	}
-	if syncer.skippedNodesChanged(nil) {
-		t.Fatal("an empty set of skipped Nodes must not be reported twice")
+	if syncer.newlySkippedNodes(skipped) == "" {
+		t.Error("after the target groups are torn down the same skipped Nodes must be reported again")
 	}
 }

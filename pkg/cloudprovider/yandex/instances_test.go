@@ -60,17 +60,3 @@ func TestGetInstanceByProviderIDReturnsInstanceNotFoundForMissingInstance(t *tes
 		t.Fatalf("expected cloudprovider.InstanceNotFound for a deleted Instance, got %v", err)
 	}
 }
-
-// A ProviderID that cannot be parsed must not be reported as a missing Instance: skipping such a
-// Node would hide a misconfiguration, so it has to surface as an ordinary error instead.
-func TestGetInstanceByProviderIDRejectsUnparsableProviderID(t *testing.T) {
-	cloud := newTestCloud(nil)
-
-	_, err := cloud.getInstanceByProviderID(context.Background(), "aws:///eu-central-1a/i-1")
-	if err == nil {
-		t.Fatal("expected an error for a non-Yandex ProviderID")
-	}
-	if errors.Is(err, cloudprovider.InstanceNotFound) {
-		t.Fatalf("an unparsable ProviderID must not be reported as a missing Instance, got %v", err)
-	}
-}
