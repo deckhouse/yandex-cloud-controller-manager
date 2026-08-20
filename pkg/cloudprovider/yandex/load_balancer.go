@@ -223,7 +223,13 @@ func (yc *Cloud) ensureLB(ctx context.Context, service *v1.Service, nodes []*v1.
 		return nil, err
 	}
 	if tg == nil {
-		return nil, fmt.Errorf("TG %q does not exist yet; it is only created for Nodes carrying a Yandex ProviderID, check that the Nodes backing this Service have one", tgName)
+		// Two things keep this target group from existing: no Node carries a Yandex ProviderID, or
+		// the prefix annotation on this Service names a target group that no Node asks for – the
+		// name is built from the Service annotation here, but from the Node annotation in
+		// constructTgNameToTargetMap, and a Service annotated ahead of its Nodes is a normal
+		// transient state.
+		return nil, fmt.Errorf("TG %q does not exist yet: target groups are built from Nodes carrying a Yandex ProviderID, and the %s annotation on this Service must match the one on those Nodes",
+			tgName, customTargetGroupNamePrefixAnnotation)
 	}
 
 	externalIP, err := yc.yandexService.LbSvc.CreateOrUpdateLB(ctx, lbName, listenerSpecs, []*loadbalancer.AttachedTargetGroup{
