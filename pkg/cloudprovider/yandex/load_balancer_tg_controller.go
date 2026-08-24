@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 
@@ -16,7 +17,8 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/loadbalancer/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
+	cloudprovider "k8s.io/cloud-provider"
+	cloudproviderapi "k8s.io/cloud-provider/api"
 
 	corev1listers "k8s.io/client-go/listers/core/v1"
 
@@ -30,6 +32,7 @@ type NodeTargetGroupSyncer struct {
 	cloud *Cloud
 
 	lastVisitedNodes mapset.Set
+	lastSkippedNodes string
 	serviceLister    corev1listers.ServiceLister
 
 	tgSyncLock sync.Mutex
@@ -98,7 +101,11 @@ func (ntgs *NodeTargetGroupSyncer) cleanUpTargetGroups(ctx context.Context) erro
 		return err
 	}
 
+	// Both caches describe the target groups that were just removed, so neither may outlive them:
+	// keeping lastSkippedNodes would swallow the warning about a Node left out of the target groups
+	// the next time a LoadBalancer Service appears.
 	ntgs.lastVisitedNodes.Clear()
+	ntgs.lastSkippedNodes = ""
 
 	return nil
 }
@@ -108,34 +115,117 @@ type instanceWithNodeInfo struct {
 	Node     *corev1.Node
 }
 
+func hasTaint(node *corev1.Node, key string) bool {
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+// partitionNodesByProviderID splits Nodes into the ones that can be placed into a target group
+// and human-readable reasons for the ones that cannot. Nodes without a ProviderID are not an
+// error: a freshly registered Node has no ProviderID until the node controller assigns one, and
+// a cluster may legitimately mix cloud Nodes with static ones that never get a Yandex ProviderID.
+//
+// This is a different notion of eligibility from nodeEligibleForLoadBalancer, which filters on
+// Node state – deletion, exclusion label, autoscaler taint – rather than on the ProviderID.
+func partitionNodesByProviderID(nodes []*corev1.Node) (yandexNodes []*corev1.Node, skipped []string) {
+	yandexNodes = make([]*corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Spec.ProviderID == "" {
+			// The taint separates two causes that need different fixes: with it, cloud-node has
+			// simply not initialized the Node yet; without it, the Node was never offered to a
+			// cloud provider – a genuine static Node, or a cloud VM whose kubelet is missing
+			// --cloud-provider=external and which stays out of the target groups until that is
+			// fixed. Naming which one it is turns a silent capacity loss into something actionable.
+			reason := "awaiting cloud-node initialization"
+			if !hasTaint(node, cloudproviderapi.TaintExternalCloudProvider) {
+				reason = fmt.Sprintf("no %s taint, never handed to a cloud provider",
+					cloudproviderapi.TaintExternalCloudProvider)
+			}
+			skipped = append(skipped, fmt.Sprintf("%s (%s)", node.Name, reason))
+
+			continue
+		}
+
+		// ParseProviderID anchors on the yandex:// scheme, unlike a substring match, which would
+		// also accept a foreign ProviderID that merely mentions the provider name. Its result is
+		// what the Instance lookup consumes, so an unparsable value has to be rejected here.
+		if _, _, err := ParseProviderID(node.Spec.ProviderID); err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s (%s)", node.Name, err))
+			continue
+		}
+
+		yandexNodes = append(yandexNodes, node)
+	}
+
+	return yandexNodes, skipped
+}
+
+// newlySkippedNodes returns the Nodes left out of the target groups rendered for a log line, or an
+// empty string when there is nothing new to report. Skipped Nodes have to be visible at default
+// verbosity – an operator must be able to see that a Node dropped out of the target groups – but a
+// cluster with static Nodes would otherwise repeat the same warning on every synchronization.
+//
+// Sorting is what makes the comparison correct at all – Node order from the informer is not stable
+// – and it keeps the reported line stable between reports. The argument is freshly built by
+// partitionNodesByProviderID, so sorting it in place is safe.
+func (ntgs *NodeTargetGroupSyncer) newlySkippedNodes(skipped []string) string {
+	sort.Strings(skipped)
+
+	current := strings.Join(skipped, "; ")
+	if current == ntgs.lastSkippedNodes {
+		return ""
+	}
+	ntgs.lastSkippedNodes = current
+
+	return current
+}
+
 func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.Context, nodes []*corev1.Node) error {
 	if len(nodes) == 0 {
 		klog.Info("no nodes to synchronize TGs with, skipping...")
 		return nil
 	}
 
-	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(nodes))
+	yandexNodes, skippedNodes := partitionNodesByProviderID(nodes)
+
+	// Reported before the lastVisitedNodes check below: a skipped Node never reaches that cache,
+	// so gating this on a changed Node set would hide it entirely.
+	if reasons := ntgs.newlySkippedNodes(skippedNodes); reasons != "" {
+		klog.Warningf("skipping %d of %d Nodes during TG synchronization: %s",
+			len(skippedNodes), len(nodes), reasons)
+	}
+
+	if len(yandexNodes) == 0 {
+		klog.Warningf("none of %d Nodes have a valid Yandex ProviderID, skipping TG synchronization", len(nodes))
+		return nil
+	}
+
+	newSet := mapset.NewSetFromSlice(nodeTargetGroupSyncState(yandexNodes))
 	if ntgs.lastVisitedNodes.Equal(newSet) {
 		return nil
 	}
 
-	// TODO: speed up by not performing individual lookups
 	var instances []*instanceWithNodeInfo
-	for _, node := range nodes {
-		if node.Spec.ProviderID == "" {
-			return errors.Errorf("node %s ProviderID is empty", node.Name)
-		}
-
-		if !(strings.Contains(node.Spec.ProviderID, "yandex")) {
-			log.Printf("node %s ProviderID is not yandex (%s), skipping", node.Name, node.Spec.ProviderID)
-			continue
-		}
-
-		nodeName := MapNodeNameToInstanceName(types.NodeName(node.Name))
-		log.Printf("Finding Instance by Folder %q and Name %q", ntgs.cloud.config.FolderID, nodeName)
-		instance, err := ntgs.cloud.yandexService.ComputeSvc.FindInstanceByName(ctx, nodeName)
-		if err != nil || instance == nil {
-			return fmt.Errorf("failed to find Instance by its name: %s", err)
+	for _, node := range yandexNodes {
+		// getInstanceByProviderID resolves a modern yandex://<id> ProviderID with a single Get by
+		// ID instead of listing the folder by Node name, which also means a Node is never matched
+		// to an unrelated Instance that happens to share its name.
+		instance, err := ntgs.cloud.getInstanceByProviderID(ctx, node.Spec.ProviderID)
+		if err != nil {
+			// A deleted Instance must not abort synchronization for every other Node, the same way
+			// an empty ProviderID must not. Network and server-side failures still do. The state is
+			// self-clearing: cloud-node-lifecycle removes Nodes whose Instance no longer exists.
+			if errors.Is(err, cloudprovider.InstanceNotFound) {
+				klog.Warningf("Instance for Node %s (%s) no longer exists, leaving it out of the target groups",
+					node.Name, node.Spec.ProviderID)
+				continue
+			}
+			return fmt.Errorf("failed to find Instance for Node %s: %w", node.Name, err)
 		}
 
 		instances = append(instances, &instanceWithNodeInfo{Instance: instance, Node: node})
@@ -150,7 +240,14 @@ func (ntgs *NodeTargetGroupSyncer) synchronizeNodesWithTargetGroups(ctx context.
 		return err
 	}
 
-	ntgs.lastVisitedNodes = newSet
+	// The set that was achieved, not the one that was desired: a Node left out because its Instance
+	// is gone has to be retried on the next synchronization rather than pinned until an unrelated
+	// change makes the desired set differ again.
+	syncedNodes := make([]*corev1.Node, 0, len(instances))
+	for _, instance := range instances {
+		syncedNodes = append(syncedNodes, instance.Node)
+	}
+	ntgs.lastVisitedNodes = mapset.NewSetFromSlice(nodeTargetGroupSyncState(syncedNodes))
 
 	return nil
 }
