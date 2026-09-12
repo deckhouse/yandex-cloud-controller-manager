@@ -62,7 +62,11 @@ spec:
                 secretKeyRef:
                   name: yandex-cloud
                   key: folder-id
+            - name: YANDEX_CLUSTER_NAME
+              value: <CLUSTER_NAME>
             - name: YANDEX_CLOUD_DEFAULT_LB_TARGET_GROUP_NETWORK_ID
+              value: <ID>
+            - name: YANDEX_CLOUD_DEFAULT_LB_LISTENER_SUBNET_ID
               value: <ID>
             - name: YANDEX_CLOUD_INTERNAL_NETWORK_IDS
               value: <COMMA_SEPARATED_INTERNAL_NETWORK_IDS>
