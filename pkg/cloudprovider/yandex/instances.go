@@ -105,9 +105,6 @@ func (yc *Cloud) extractNodeAddresses(ctx context.Context, instance *compute.Ins
 		}
 
 		nodeAddresses = []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: networkInterface.PrimaryV4Address.Address}}
-		if networkInterface.PrimaryV4Address.OneToOneNat != nil {
-			nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeExternalIP, Address: networkInterface.PrimaryV4Address.OneToOneNat.Address})
-		}
 	}
 
 	if len(yc.config.ExternalNetworkIDsSet) > 0 {
